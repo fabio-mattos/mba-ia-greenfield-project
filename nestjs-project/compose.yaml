@@ -69,7 +69,10 @@ services:
   video-worker:
     build:
       context: ../video-worker
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ../video-worker:/app
+      - video_worker_node_modules:/app/node_modules
     depends_on:
       db:
         condition: service_healthy
@@ -87,3 +90,4 @@ services:
 volumes:
   minio_data:
   nestjs_node_modules:
+  video_worker_node_modules:
