@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
+import { Client } from 'pg';
 import { User } from '../users/entities/user.entity';
 import { Channel } from '../channels/entities/channel.entity';
 import { RefreshToken } from '../auth/entities/refresh-token.entity';
@@ -14,14 +16,39 @@ const MANAGED_TABLES = [
   'verification_tokens',
 ];
 
+// CreateAuthTokens1777579850478 hardcodes "public".<object> for its enum
+// type and indexes (migrations are immutable — cannot be edited to
+// parameterize the schema). That makes a shared-schema or search_path-based
+// isolation strategy unsafe: it always targets the real "public" schema,
+// which already has these objects in a normally-migrated dev DB. The only
+// isolation that actually avoids colliding with the shared dev database is
+// a disposable database of its own, dropped again in afterAll.
+const testDbName = `migrations_test_${randomUUID().replace(/-/g, '')}`;
+
+function createAdminClient(): Client {
+  return new Client({
+    host: process.env.DB_HOST ?? 'db',
+    port: Number(process.env.DB_PORT ?? 5432),
+    user: process.env.DB_USERNAME ?? 'streamtube',
+    password: process.env.DB_PASSWORD ?? 'streamtube',
+    database: 'postgres',
+  });
+}
+
 describe('Database migrations (integration)', () => {
+  let adminClient: Client;
   let dataSource: DataSource;
 
   beforeAll(async () => {
+    adminClient = createAdminClient();
+    await adminClient.connect();
+    await adminClient.query(`CREATE DATABASE "${testDbName}"`);
+
     dataSource = createTestDataSource(
       [User, Channel, RefreshToken, VerificationToken],
       {
         synchronize: false,
+        database: testDbName,
         migrations: [
           CreateUsersAndChannels1775687773260,
           CreateAuthTokens1777579850478,
@@ -30,23 +57,12 @@ describe('Database migrations (integration)', () => {
     );
 
     await dataSource.initialize();
-
-    await Promise.all([
-      ...MANAGED_TABLES.map((table) =>
-        dataSource.query(`DROP TABLE IF EXISTS "${table}" CASCADE`),
-      ),
-      dataSource.query(`DROP TABLE IF EXISTS "migrations" CASCADE`),
-      dataSource.query(
-        `DROP TYPE IF EXISTS "public"."verification_tokens_type_enum" CASCADE`,
-      ),
-    ]);
   });
 
   afterAll(async () => {
-    // The second test undoes the last migration, leaving token tables missing.
-    // Re-apply so the shared DB is fully migrated when subsequent suites run.
-    await dataSource.runMigrations();
     await dataSource.destroy();
+    await adminClient.query(`DROP DATABASE "${testDbName}" WITH (FORCE)`);
+    await adminClient.end();
   });
 
   it('should apply all migrations and create all four tables', async () => {

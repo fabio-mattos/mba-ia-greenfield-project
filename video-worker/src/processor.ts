@@ -20,11 +20,19 @@ async function downloadFile(url: string, destPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http;
     const file = fs.createWriteStream(destPath);
-    client.get(url, (res) => {
+    const request = client.get(url, (res) => {
+      const statusCode = res.statusCode ?? 0;
+      if (statusCode < 200 || statusCode >= 300) {
+        file.close();
+        fs.unlink(destPath, () => undefined);
+        reject(new Error(`Download failed with status ${statusCode}`));
+        return;
+      }
       res.pipe(file);
       file.on('finish', () => file.close(() => resolve()));
       file.on('error', reject);
     });
+    request.on('error', reject);
   });
 }
 
@@ -40,10 +48,11 @@ function getDuration(filePath: string): Promise<number> {
 function extractThumbnail(
   filePath: string,
   outputPath: string,
+  seekSeconds: number,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     ffmpeg(filePath)
-      .seekInput(5)
+      .seekInput(seekSeconds)
       .frames(1)
       .output(outputPath)
       .on('end', () => resolve())
@@ -72,7 +81,8 @@ export async function processVideo(videoId: string): Promise<void> {
     await downloadFile(presignedUrl, videoPath);
 
     const durationSeconds = await getDuration(videoPath);
-    await extractThumbnail(videoPath, thumbnailPath);
+    const seekSeconds = durationSeconds > 1 ? Math.min(5, durationSeconds / 2) : 0;
+    await extractThumbnail(videoPath, thumbnailPath, seekSeconds);
 
     const thumbnailBuffer = fs.readFileSync(thumbnailPath);
     const thumbnailKey = `thumbnails/${videoId}.jpg`;

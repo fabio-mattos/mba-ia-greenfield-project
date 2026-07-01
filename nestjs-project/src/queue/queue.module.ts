@@ -18,7 +18,13 @@ import { VideoProcessingProducer } from './video-processing.producer';
         },
       }),
     }),
-    BullModule.registerQueue({ name: VIDEO_PROCESSING_QUEUE }),
+    BullModule.registerQueue({
+      name: VIDEO_PROCESSING_QUEUE,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+      },
+    }),
   ],
   providers: [VideoProcessingProducer],
   exports: [VideoProcessingProducer],

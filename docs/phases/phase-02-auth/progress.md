@@ -1,7 +1,7 @@
 # phase-02-auth — Progress
 
 **Status:** completed
-**SIs:** 18/18 completed
+**SIs:** 19/19 completed
 
 ### SI-02.1 — Dependencies, Configuration Namespaces, and Docker Compose
 - **Status:** completed
@@ -94,3 +94,8 @@ Review how env values are being used in tests (avoid localhost). And in UsersMod
 - **Status:** completed
 - **Tests:** no tests — `npm run build` produces confirmation.hbs and password-reset.hbs in dist/mail/templates/
 - **Observations:** none
+
+### SI-02.19 — Migrations Integration Test Isolation Fix (retroactive, found during Phase 03 close-out)
+- **Status:** completed
+- **Tests:** 2/2 passing (`database/migrations.integration-spec.ts`); full suite re-verified after fix (177/177 unit+integration, 52/52 e2e)
+- **Observations:** `migrations.integration-spec.ts` was written when only 2 migrations existed. Its `beforeAll` did `DROP TABLE users/channels/refresh_tokens/verification_tokens CASCADE` + `DROP TABLE "migrations" CASCADE` against the shared dev database, and its `afterAll` only knew how to reapply those same 2 migrations. Once Phase 03/04/06 added migrations with FKs into `channels`/`users` (videos, subscriptions, comments, video_likes, comment_likes), every run of this test silently cascade-dropped those FK constraints and the `channels.thumbnail_key` column (added by `AddThumbnailToChannels`), and wiped the migrations bookkeeping table down to 2 rows — breaking `POST /auth/forgot-password` (500: `column channels.thumbnail_key does not exist`) and any query joining through `channels`/`videos`. Discovered because the shared dev DB was actually corrupted by this test after an unrelated `npm test --runInBand` run. Fixed by giving the test its own disposable Postgres database (`CREATE DATABASE`/`DROP DATABASE ... WITH (FORCE)` in `beforeAll`/`afterAll`, via a new `database` option on `createTestDataSource`) instead of operating on the shared `streamtube` database — `CreateAuthTokens1777579850478` hardcodes `"public".<object>` for its enum/indexes, so a same-database schema-isolation approach (search_path tricks) does not work; only a separate database avoids the collision. Manually repaired the corrupted shared dev DB (re-added the column + 6 FK constraints, backfilled the `migrations` table rows) before applying the fix.

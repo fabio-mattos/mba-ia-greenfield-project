@@ -50,6 +50,7 @@ const httpGet = jest.fn();
 const fsMkdtempSync = jest.fn(() => '/tmp/video-test');
 const fsReadFileSync = jest.fn(() => Buffer.from('fake-thumbnail-bytes'));
 const fsRmSync = jest.fn();
+const fsUnlink = jest.fn((_path: string, cb?: Handler) => cb && cb());
 let fakeWriteStream: FakeWriteStream;
 const fsCreateWriteStream = jest.fn(() => fakeWriteStream);
 
@@ -58,6 +59,7 @@ jest.mock('node:fs', () => ({
   createWriteStream: fsCreateWriteStream,
   readFileSync: fsReadFileSync,
   rmSync: fsRmSync,
+  unlink: fsUnlink,
 }));
 
 jest.mock('node:http', () => ({
@@ -101,6 +103,7 @@ import { processVideo } from './processor';
 function mockSuccessfulDownload() {
   httpGet.mockImplementation((_url: string, cb: Handler) => {
     const res = {
+      statusCode: 200,
       pipe: jest.fn(() => {
         setImmediate(() => fakeWriteStream.emit('finish'));
       }),
@@ -186,6 +189,7 @@ describe('processVideo', () => {
     getVideoById.mockResolvedValue({ file_key: 'uploads/video-1.mp4' });
     httpGet.mockImplementation((_url: string, cb: Handler) => {
       const res = {
+        statusCode: 200,
         pipe: jest.fn(() => {
           setImmediate(() => fakeWriteStream.emit('error', new Error('network down')));
         }),
@@ -199,5 +203,39 @@ describe('processVideo', () => {
     expect(updateVideoFailed).toHaveBeenCalledWith('video-1');
     expect(updateVideoProcessed).not.toHaveBeenCalled();
     expect(fsRmSync).toHaveBeenCalled();
+  });
+
+  it('marks the video as failed and rethrows when the presigned url responds with a non-2xx status', async () => {
+    getVideoById.mockResolvedValue({ file_key: 'uploads/video-1.mp4' });
+    httpGet.mockImplementation((_url: string, cb: Handler) => {
+      const res = { statusCode: 403, pipe: jest.fn() };
+      cb(res);
+      return { on: jest.fn() };
+    });
+
+    await expect(processVideo('video-1')).rejects.toThrow(
+      'Download failed with status 403',
+    );
+
+    expect(updateVideoFailed).toHaveBeenCalledWith('video-1');
+    expect(updateVideoProcessed).not.toHaveBeenCalled();
+    expect(fsRmSync).toHaveBeenCalled();
+  });
+
+  it('seeks proportionally to a short video duration instead of the fixed 5s offset', async () => {
+    getVideoById.mockResolvedValue({ file_key: 'uploads/video-1.mp4' });
+    ffprobeMock.mockImplementation((_path: string, cb: Handler) => {
+      cb(null, { format: { duration: 3 } });
+    });
+    mockSuccessfulDownload();
+
+    await processVideo('video-1');
+
+    expect(ffmpegChain.seekInput).toHaveBeenCalledWith(1.5);
+    expect(updateVideoProcessed).toHaveBeenCalledWith(
+      'video-1',
+      3,
+      'thumbnails/video-1.jpg',
+    );
   });
 });

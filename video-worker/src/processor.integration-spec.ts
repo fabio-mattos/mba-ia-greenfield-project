@@ -81,6 +81,22 @@ async function cleanupFixture(
   }
 }
 
+async function uploadSyntheticVideoFixture(durationSeconds: number): Promise<{
+  fixture: { userId: string; channelId: string; videoId: string };
+  fileKey: string;
+}> {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'processor-it-'));
+  const localVideoPath = path.join(tmpDir, 'fixture.mp4');
+  generateSyntheticVideo(localVideoPath, durationSeconds);
+
+  const fileKey = `integration-test/${crypto.randomUUID()}.mp4`;
+  await minioClient.fPutObject(BUCKET_VIDEOS, fileKey, localVideoPath);
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+
+  const fixture = await insertVideoFixture(fileKey);
+  return { fixture, fileKey };
+}
+
 async function getVideoRow(videoId: string) {
   const result = await pool.query(
     `SELECT status, duration_seconds, thumbnail_key FROM videos WHERE id = $1`,
@@ -105,15 +121,7 @@ describe('processVideo (integration)', () => {
   });
 
   it('processes a real video end-to-end: downloads, extracts duration/thumbnail, marks it ready', async () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'processor-it-'));
-    const localVideoPath = path.join(tmpDir, 'fixture.mp4');
-    generateSyntheticVideo(localVideoPath, 8);
-
-    const fileKey = `integration-test/${crypto.randomUUID()}.mp4`;
-    await minioClient.fPutObject(BUCKET_VIDEOS, fileKey, localVideoPath);
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-
-    const fixture = await insertVideoFixture(fileKey);
+    const { fixture, fileKey } = await uploadSyntheticVideoFixture(8);
 
     try {
       await processVideo(fixture.videoId);
@@ -123,6 +131,27 @@ describe('processVideo (integration)', () => {
       expect(row.duration_seconds).toBeGreaterThanOrEqual(6);
       expect(row.duration_seconds).toBeLessThanOrEqual(10);
       expect(row.thumbnail_key).toBe(`thumbnails/${fixture.videoId}.jpg`);
+
+      const thumbnailExists = await objectExists(
+        BUCKET_THUMBNAILS,
+        row.thumbnail_key,
+      );
+      expect(thumbnailExists).toBe(true);
+    } finally {
+      await cleanupFixture(fixture, [fileKey, `thumbnails/${fixture.videoId}.jpg`]);
+    }
+  }, 30000);
+
+  it('generates a thumbnail for a video shorter than the fixed 5s seek offset', async () => {
+    const { fixture, fileKey } = await uploadSyntheticVideoFixture(3);
+
+    try {
+      await processVideo(fixture.videoId);
+
+      const row = await getVideoRow(fixture.videoId);
+      expect(row.status).toBe('ready');
+      expect(row.duration_seconds).toBeGreaterThanOrEqual(2);
+      expect(row.duration_seconds).toBeLessThanOrEqual(4);
 
       const thumbnailExists = await objectExists(
         BUCKET_THUMBNAILS,
