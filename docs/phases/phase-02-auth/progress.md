@@ -1,7 +1,7 @@
 # phase-02-auth — Progress
 
 **Status:** completed
-**SIs:** 19/19 completed
+**SIs:** 20/20 completed
 
 ### SI-02.1 — Dependencies, Configuration Namespaces, and Docker Compose
 - **Status:** completed
@@ -99,3 +99,8 @@ Review how env values are being used in tests (avoid localhost). And in UsersMod
 - **Status:** completed
 - **Tests:** 2/2 passing (`database/migrations.integration-spec.ts`); full suite re-verified after fix (177/177 unit+integration, 52/52 e2e)
 - **Observations:** `migrations.integration-spec.ts` was written when only 2 migrations existed. Its `beforeAll` did `DROP TABLE users/channels/refresh_tokens/verification_tokens CASCADE` + `DROP TABLE "migrations" CASCADE` against the shared dev database, and its `afterAll` only knew how to reapply those same 2 migrations. Once Phase 03/04/06 added migrations with FKs into `channels`/`users` (videos, subscriptions, comments, video_likes, comment_likes), every run of this test silently cascade-dropped those FK constraints and the `channels.thumbnail_key` column (added by `AddThumbnailToChannels`), and wiped the migrations bookkeeping table down to 2 rows — breaking `POST /auth/forgot-password` (500: `column channels.thumbnail_key does not exist`) and any query joining through `channels`/`videos`. Discovered because the shared dev DB was actually corrupted by this test after an unrelated `npm test --runInBand` run. Fixed by giving the test its own disposable Postgres database (`CREATE DATABASE`/`DROP DATABASE ... WITH (FORCE)` in `beforeAll`/`afterAll`, via a new `database` option on `createTestDataSource`) instead of operating on the shared `streamtube` database — `CreateAuthTokens1777579850478` hardcodes `"public".<object>` for its enum/indexes, so a same-database schema-isolation approach (search_path tricks) does not work; only a separate database avoids the collision. Manually repaired the corrupted shared dev DB (re-added the column + 6 FK constraints, backfilled the `migrations` table rows) before applying the fix.
+
+### SI-02.20 — JwtAuthGuard Optional Authentication Fix (retroactive, found during Phase 05 close-out)
+- **Status:** completed
+- **Tests:** `jwt-auth.guard.spec.ts` — 7/7 passing (3 new cases); full suite re-verified after fix (215/215 unit+integration, 89/89 e2e)
+- **Observations:** `JwtAuthGuard.canActivate` returned `true` immediately for `@Public()` routes, before ever reading the `Authorization` header — so `request.user` was never populated on public routes, even when the caller sent a valid Bearer token. This silently broke every "optional auth" endpoint added in later phases that reads `req.user?.sub` to answer "is the current user already reacting to/subscribed to this" (`video-likes`/`comment-likes` like-status, `subscriptions` subscribe-status), and blocked the Phase 05 fix for owner-aware video visibility (needed to know who's asking even on the public `GET /videos/:slug` endpoint). Fixed so a public route still attempts JWT verification when a token is present: valid token → `request.user` set (works even though `isPublic` is true); missing/invalid/expired token → proceeds anonymously (unchanged from before). Protected-route behavior (`isPublic` false) is untouched in every branch — verified by re-running the full existing suite, which passed unchanged.

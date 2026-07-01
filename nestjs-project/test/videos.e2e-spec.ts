@@ -11,7 +11,11 @@ import { ValidationExceptionFilter } from '../src/common/filters/validation-exce
 import { cleanAllTables } from '../src/test/create-test-data-source';
 import { User } from '../src/users/entities/user.entity';
 import { Channel } from '../src/channels/entities/channel.entity';
-import { Video, VideoStatus } from '../src/videos/entities/video.entity';
+import {
+  Video,
+  VideoStatus,
+  VideoVisibility,
+} from '../src/videos/entities/video.entity';
 
 describe('Videos management (e2e)', () => {
   let app: INestApplication<App>;
@@ -239,6 +243,147 @@ describe('Videos management (e2e)', () => {
       expect(
         res.body.data.every((v: { title: string }) => v.title !== 'Not mine'),
       ).toBe(true);
+    });
+  });
+
+  describe('GET /videos/:slug (visibility access control)', () => {
+    it('returns 200 for an anonymous request to a published public video', async () => {
+      const { channelId } = await registerConfirmAndLogin(
+        'watch-public@example.com',
+      );
+      const video = await createVideo(channelId, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+      });
+
+      await request(app.getHttpServer())
+        .get(`/videos/${video.slug}`)
+        .expect(200);
+    });
+
+    it('returns 200 for an anonymous request to a published unlisted video', async () => {
+      const { channelId } = await registerConfirmAndLogin(
+        'watch-unlisted@example.com',
+      );
+      const video = await createVideo(channelId, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.UNLISTED,
+      });
+
+      await request(app.getHttpServer())
+        .get(`/videos/${video.slug}`)
+        .expect(200);
+    });
+
+    it('returns 404 with VIDEO_NOT_FOUND for an anonymous request to a draft video', async () => {
+      const { channelId } = await registerConfirmAndLogin(
+        'watch-draft-anon@example.com',
+      );
+      const video = await createVideo(channelId, {
+        status: VideoStatus.DRAFT,
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/videos/${video.slug}`)
+        .expect(404);
+
+      expect(res.body.error).toBe('VIDEO_NOT_FOUND');
+    });
+
+    it('returns 200 for the owner requesting their own draft video', async () => {
+      const { accessToken, channelId } = await registerConfirmAndLogin(
+        'watch-draft-owner@example.com',
+      );
+      const video = await createVideo(channelId, {
+        status: VideoStatus.DRAFT,
+      });
+
+      await request(app.getHttpServer())
+        .get(`/videos/${video.slug}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+    });
+
+    it('returns 404 for a different authenticated user requesting a draft video', async () => {
+      const owner = await registerConfirmAndLogin('watch-draft-a@example.com');
+      const stranger = await registerConfirmAndLogin(
+        'watch-draft-b@example.com',
+      );
+      const video = await createVideo(owner.channelId, {
+        status: VideoStatus.DRAFT,
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/videos/${video.slug}`)
+        .set('Authorization', `Bearer ${stranger.accessToken}`)
+        .expect(404);
+
+      expect(res.body.error).toBe('VIDEO_NOT_FOUND');
+    });
+  });
+
+  describe('GET /videos/:slug/stream and /download (visibility access control)', () => {
+    it('returns 404 for an anonymous request to a draft video stream url', async () => {
+      const { channelId } = await registerConfirmAndLogin(
+        'stream-draft@example.com',
+      );
+      const video = await createVideo(channelId, {
+        status: VideoStatus.DRAFT,
+      });
+
+      await request(app.getHttpServer())
+        .get(`/videos/${video.slug}/stream`)
+        .expect(404);
+    });
+
+    it('returns 404 for an anonymous request to a draft video download url', async () => {
+      const { channelId } = await registerConfirmAndLogin(
+        'download-draft@example.com',
+      );
+      const video = await createVideo(channelId, {
+        status: VideoStatus.DRAFT,
+      });
+
+      await request(app.getHttpServer())
+        .get(`/videos/${video.slug}/download`)
+        .expect(404);
+    });
+  });
+
+  describe('POST /videos/:slug/view', () => {
+    it('returns 204 and increments the view count for a published video', async () => {
+      const { channelId } = await registerConfirmAndLogin('viewer@example.com');
+      const video = await createVideo(channelId, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+      });
+
+      await request(app.getHttpServer())
+        .post(`/videos/${video.slug}/view`)
+        .expect(204);
+
+      const updated = await videoRepository.findOne({
+        where: { id: video.id },
+      });
+      expect(updated?.view_count).toBe(1);
+    });
+  });
+
+  describe('GET /videos/:slug/suggestions', () => {
+    it('returns 200 with an array of suggested videos', async () => {
+      const { channelId } = await registerConfirmAndLogin(
+        'suggestions@example.com',
+      );
+      const video = await createVideo(channelId, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/videos/${video.slug}/suggestions`)
+        .expect(200);
+
+      expect(Array.isArray(res.body)).toBe(true);
     });
   });
 });

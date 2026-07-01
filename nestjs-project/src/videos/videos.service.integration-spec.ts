@@ -239,4 +239,147 @@ describe('VideosService (integration) — management endpoints', () => {
       expect(result.data.every((v) => v.title !== 'Not mine')).toBe(true);
     });
   });
+
+  describe('visibility access control (findBySlug / getStreamUrl / getDownloadUrl)', () => {
+    it('findBySlug returns a published public video for an anonymous requester', async () => {
+      const channel = await createChannelWithUser();
+      const video = await createVideo(channel.id, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+      });
+
+      const result = await videosService.findBySlug(video.slug, null);
+
+      expect(result.id).toBe(video.id);
+    });
+
+    it('findBySlug returns a published unlisted video for an anonymous requester', async () => {
+      const channel = await createChannelWithUser();
+      const video = await createVideo(channel.id, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.UNLISTED,
+      });
+
+      const result = await videosService.findBySlug(video.slug, null);
+
+      expect(result.id).toBe(video.id);
+    });
+
+    it('findBySlug returns a draft video to its owner', async () => {
+      const channel = await createChannelWithUser();
+      const video = await createVideo(channel.id, {
+        status: VideoStatus.DRAFT,
+      });
+
+      const result = await videosService.findBySlug(
+        video.slug,
+        channel.user_id,
+      );
+
+      expect(result.id).toBe(video.id);
+    });
+
+    it('findBySlug throws VideoNotFoundException for an anonymous requester when the video is a draft', async () => {
+      const channel = await createChannelWithUser();
+      const video = await createVideo(channel.id, {
+        status: VideoStatus.DRAFT,
+      });
+
+      await expect(videosService.findBySlug(video.slug, null)).rejects.toThrow(
+        'Video not found',
+      );
+    });
+
+    it('findBySlug throws VideoNotFoundException for a different authenticated user', async () => {
+      const owner = await createChannelWithUser();
+      const stranger = await createChannelWithUser();
+      const video = await createVideo(owner.id, { status: VideoStatus.DRAFT });
+
+      await expect(
+        videosService.findBySlug(video.slug, stranger.user_id),
+      ).rejects.toThrow('Video not found');
+    });
+
+    it('getStreamUrl throws VideoNotFoundException for an anonymous requester when the video is a draft', async () => {
+      const channel = await createChannelWithUser();
+      const video = await createVideo(channel.id, {
+        status: VideoStatus.DRAFT,
+      });
+
+      await expect(
+        videosService.getStreamUrl(video.slug, null),
+      ).rejects.toThrow('Video not found');
+    });
+
+    it('getStreamUrl returns a presigned url for the owner even when the video is a draft', async () => {
+      const channel = await createChannelWithUser();
+      const video = await createVideo(channel.id, {
+        status: VideoStatus.DRAFT,
+        file_key: 'uploads/x.mp4',
+      });
+      storageService.getPresignedGetUrl.mockResolvedValue(
+        'https://minio/stream',
+      );
+
+      const url = await videosService.getStreamUrl(video.slug, channel.user_id);
+
+      expect(url).toBe('https://minio/stream');
+    });
+
+    it('getDownloadUrl throws VideoNotFoundException for a different authenticated user', async () => {
+      const owner = await createChannelWithUser();
+      const stranger = await createChannelWithUser();
+      const video = await createVideo(owner.id, { status: VideoStatus.DRAFT });
+
+      await expect(
+        videosService.getDownloadUrl(video.slug, stranger.user_id),
+      ).rejects.toThrow('Video not found');
+    });
+  });
+
+  describe('incrementViewCount', () => {
+    it('atomically increments the view count for the video matching the slug', async () => {
+      const channel = await createChannelWithUser();
+      const video = await createVideo(channel.id, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+      });
+
+      await videosService.incrementViewCount(video.slug);
+      await videosService.incrementViewCount(video.slug);
+
+      const updated = await videoRepository.findOne({
+        where: { id: video.id },
+      });
+      expect(updated?.view_count).toBe(2);
+    });
+  });
+
+  describe('getSuggestionsBySlug', () => {
+    it('returns other READY/PUBLIC videos from the same category, excluding itself', async () => {
+      const channel = await createChannelWithUser();
+      const category = await categoryRepository.save(
+        categoryRepository.create({ name: 'Música', slug: 'musica' }),
+      );
+      const source = await createVideo(channel.id, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+        category_id: category.id,
+      });
+      const sameCategory = await createVideo(channel.id, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+        category_id: category.id,
+        published_at: new Date(),
+      });
+      await createVideo(channel.id, {
+        status: VideoStatus.DRAFT,
+        category_id: category.id,
+      });
+
+      const result = await videosService.getSuggestionsBySlug(source.slug, 10);
+
+      expect(result.map((v) => v.id)).toEqual([sameCategory.id]);
+    });
+  });
 });

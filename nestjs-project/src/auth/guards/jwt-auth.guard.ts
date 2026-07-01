@@ -22,7 +22,6 @@ export class JwtAuthGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (isPublic) return true;
 
     const request = context
       .switchToHttp()
@@ -30,6 +29,7 @@ export class JwtAuthGuard implements CanActivate {
     const authHeader = request.headers?.authorization;
 
     if (!authHeader || !authHeader.startsWith(BEARER_PREFIX)) {
+      if (isPublic) return true;
       throw new UnauthorizedException();
     }
 
@@ -40,6 +40,9 @@ export class JwtAuthGuard implements CanActivate {
       request.user = payload;
       return true;
     } catch {
+      // A public route must not fail just because a stale/invalid token was
+      // sent alongside it — proceed anonymously instead of rejecting.
+      if (isPublic) return true;
       throw new UnauthorizedException();
     }
   }

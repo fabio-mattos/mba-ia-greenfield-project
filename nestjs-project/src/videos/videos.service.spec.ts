@@ -27,6 +27,7 @@ function defaultVideo(): {
   updated_at: Date;
   channel: {
     id: string;
+    user_id: string;
     nickname: string;
     name: string;
     thumbnail_key: string | null;
@@ -51,6 +52,7 @@ function defaultVideo(): {
     updated_at: new Date(),
     channel: {
       id: 'channel-id',
+      user_id: 'owner-user-id',
       nickname: 'testchan',
       name: 'Test Channel',
       thumbnail_key: null,
@@ -214,12 +216,12 @@ describe('VideosService', () => {
         videoRepository: { findOne: jest.fn().mockResolvedValue(null) },
       });
 
-      await expect(service.findBySlug('nope')).rejects.toThrow(
+      await expect(service.findBySlug('nope', null)).rejects.toThrow(
         VideoNotFoundException,
       );
     });
 
-    it('returns video response DTO when found', async () => {
+    it('returns the video for an anonymous requester when published public', async () => {
       const video = makeVideo({
         status: VideoStatus.READY,
         visibility: VideoVisibility.PUBLIC,
@@ -228,10 +230,133 @@ describe('VideosService', () => {
         videoRepository: { findOne: jest.fn().mockResolvedValue(video) },
       });
 
-      const result = await service.findBySlug('abc123def45');
+      const result = await service.findBySlug('abc123def45', null);
 
       expect(result.id).toBe('video-id');
       expect(result.slug).toBe('abc123def45');
+    });
+
+    it('returns the video for an anonymous requester when published unlisted', async () => {
+      const video = makeVideo({
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.UNLISTED,
+      });
+      const { service } = makeService({
+        videoRepository: { findOne: jest.fn().mockResolvedValue(video) },
+      });
+
+      const result = await service.findBySlug('abc123def45', null);
+
+      expect(result.id).toBe('video-id');
+    });
+
+    it('returns the video for its owner regardless of status/visibility', async () => {
+      const video = makeVideo({ status: VideoStatus.DRAFT, visibility: null });
+      const { service } = makeService({
+        videoRepository: { findOne: jest.fn().mockResolvedValue(video) },
+      });
+
+      const result = await service.findBySlug('abc123def45', 'owner-user-id');
+
+      expect(result.id).toBe('video-id');
+    });
+
+    it('throws VideoNotFoundException for an anonymous requester when the video is a draft', async () => {
+      const video = makeVideo({ status: VideoStatus.DRAFT, visibility: null });
+      const { service } = makeService({
+        videoRepository: { findOne: jest.fn().mockResolvedValue(video) },
+      });
+
+      await expect(service.findBySlug('abc123def45', null)).rejects.toThrow(
+        'Video not found',
+      );
+    });
+
+    it('throws VideoNotFoundException for a different, authenticated user when the video is a draft', async () => {
+      const video = makeVideo({ status: VideoStatus.DRAFT, visibility: null });
+      const { service } = makeService({
+        videoRepository: { findOne: jest.fn().mockResolvedValue(video) },
+      });
+
+      await expect(
+        service.findBySlug('abc123def45', 'someone-else-user-id'),
+      ).rejects.toThrow('Video not found');
+    });
+  });
+
+  describe('getStreamUrl', () => {
+    it('returns a presigned url for an anonymous requester when published', async () => {
+      const video = makeVideo({
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+        file_key: 'uploads/abc/test.mp4',
+      });
+      const { service, storage } = makeService({
+        videoRepository: { findOne: jest.fn().mockResolvedValue(video) },
+      });
+      storage.getPresignedGetUrl.mockResolvedValue('https://minio/stream-url');
+
+      const url = await service.getStreamUrl('abc123def45', null);
+
+      expect(url).toBe('https://minio/stream-url');
+    });
+
+    it('throws VideoNotFoundException for an anonymous requester when the video is a draft', async () => {
+      const video = makeVideo({ status: VideoStatus.DRAFT, visibility: null });
+      const { service } = makeService({
+        videoRepository: { findOne: jest.fn().mockResolvedValue(video) },
+      });
+
+      await expect(service.getStreamUrl('abc123def45', null)).rejects.toThrow(
+        'Video not found',
+      );
+    });
+
+    it('returns a presigned url for the owner even when the video is a draft', async () => {
+      const video = makeVideo({
+        status: VideoStatus.DRAFT,
+        visibility: null,
+        file_key: 'uploads/abc/test.mp4',
+      });
+      const { service, storage } = makeService({
+        videoRepository: { findOne: jest.fn().mockResolvedValue(video) },
+      });
+      storage.getPresignedGetUrl.mockResolvedValue('https://minio/stream-url');
+
+      const url = await service.getStreamUrl('abc123def45', 'owner-user-id');
+
+      expect(url).toBe('https://minio/stream-url');
+    });
+  });
+
+  describe('getDownloadUrl', () => {
+    it('returns a presigned download url for an anonymous requester when published', async () => {
+      const video = makeVideo({
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+        file_key: 'uploads/abc/test.mp4',
+      });
+      const { service, storage } = makeService({
+        videoRepository: { findOne: jest.fn().mockResolvedValue(video) },
+      });
+      storage.getPresignedGetUrlWithDisposition.mockResolvedValue(
+        'https://minio/download-url',
+      );
+
+      const url = await service.getDownloadUrl('abc123def45', null);
+
+      expect(url).toBe('https://minio/download-url');
+    });
+
+    it('throws VideoNotFoundException for a different, authenticated user when the video is a draft', async () => {
+      const video = makeVideo({ status: VideoStatus.DRAFT, visibility: null });
+      const { service } = makeService({
+        videoRepository: { findOne: jest.fn().mockResolvedValue(video) },
+      });
+
+      await expect(
+        service.getDownloadUrl('abc123def45', 'someone-else-user-id'),
+      ).rejects.toThrow('Video not found');
     });
   });
 

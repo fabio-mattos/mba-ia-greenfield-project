@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  Request,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -150,8 +151,11 @@ export class VideosController {
     status: 404,
     schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
   })
-  async findBySlug(@Param('slug') slug: string): Promise<VideoResponseDto> {
-    return this.videosService.findBySlug(slug);
+  async findBySlug(
+    @Param('slug') slug: string,
+    @Request() req: { user?: JwtPayload },
+  ): Promise<VideoResponseDto> {
+    return this.videosService.findBySlug(slug, req.user?.sub ?? null);
   }
 
   @Public()
@@ -168,8 +172,14 @@ export class VideosController {
     status: 404,
     schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
   })
-  async getStreamUrl(@Param('slug') slug: string): Promise<{ url: string }> {
-    const url = await this.videosService.getStreamUrl(slug);
+  async getStreamUrl(
+    @Param('slug') slug: string,
+    @Request() req: { user?: JwtPayload },
+  ): Promise<{ url: string }> {
+    const url = await this.videosService.getStreamUrl(
+      slug,
+      req.user?.sub ?? null,
+    );
     return { url };
   }
 
@@ -188,8 +198,14 @@ export class VideosController {
     status: 404,
     schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
   })
-  async getDownloadUrl(@Param('slug') slug: string): Promise<{ url: string }> {
-    const url = await this.videosService.getDownloadUrl(slug);
+  async getDownloadUrl(
+    @Param('slug') slug: string,
+    @Request() req: { user?: JwtPayload },
+  ): Promise<{ url: string }> {
+    const url = await this.videosService.getDownloadUrl(
+      slug,
+      req.user?.sub ?? null,
+    );
     return { url };
   }
 

@@ -78,7 +78,10 @@ export class VideosService {
     await this.videoProcessingProducer.enqueue(video.id);
   }
 
-  async findBySlug(slug: string): Promise<VideoResponseDto> {
+  async findBySlug(
+    slug: string,
+    requestingUserId: string | null,
+  ): Promise<VideoResponseDto> {
     const video = await this.videoRepository.findOne({
       where: { slug },
       relations: ['channel', 'category'],
@@ -87,6 +90,8 @@ export class VideosService {
     if (!video) {
       throw new VideoNotFoundException();
     }
+
+    this.assertViewable(video, requestingUserId);
 
     return this.toResponseDto(video);
   }
@@ -214,12 +219,20 @@ export class VideosService {
     await this.videoRepository.delete(videoId);
   }
 
-  async getStreamUrl(slug: string): Promise<string> {
-    const video = await this.videoRepository.findOne({ where: { slug } });
+  async getStreamUrl(
+    slug: string,
+    requestingUserId: string | null,
+  ): Promise<string> {
+    const video = await this.videoRepository.findOne({
+      where: { slug },
+      relations: ['channel'],
+    });
 
     if (!video) {
       throw new VideoNotFoundException();
     }
+
+    this.assertViewable(video, requestingUserId);
 
     if (!video.file_key) {
       throw new VideoNotReadyException();
@@ -232,12 +245,20 @@ export class VideosService {
     );
   }
 
-  async getDownloadUrl(slug: string): Promise<string> {
-    const video = await this.videoRepository.findOne({ where: { slug } });
+  async getDownloadUrl(
+    slug: string,
+    requestingUserId: string | null,
+  ): Promise<string> {
+    const video = await this.videoRepository.findOne({
+      where: { slug },
+      relations: ['channel'],
+    });
 
     if (!video) {
       throw new VideoNotFoundException();
     }
+
+    this.assertViewable(video, requestingUserId);
 
     if (!video.file_key) {
       throw new VideoNotReadyException();
@@ -250,6 +271,17 @@ export class VideosService {
       3600,
       `${filename}.mp4`,
     );
+  }
+
+  private assertViewable(video: Video, requestingUserId: string | null): void {
+    const isOwner =
+      requestingUserId !== null && video.channel.user_id === requestingUserId;
+    const isPubliclyViewable =
+      video.status === VideoStatus.READY && video.visibility !== null;
+
+    if (!isOwner && !isPubliclyViewable) {
+      throw new VideoNotFoundException();
+    }
   }
 
   async incrementViewCount(slug: string): Promise<void> {

@@ -46,10 +46,50 @@ describe('JwtAuthGuard', () => {
     mockReflector.getAllAndOverride.mockReturnValue(false);
   });
 
-  it('bypasses guard on @Public() routes', async () => {
+  it('bypasses guard on @Public() routes with no Authorization header', async () => {
     mockReflector.getAllAndOverride.mockReturnValue(true);
-    const ctx = makeContext({ headers: {} });
+    const request: Record<string, unknown> = { headers: {} };
+    const ctx = makeContext(request);
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    expect(request.user).toBeUndefined();
+  });
+
+  it('attaches payload to request.user on a @Public() route when a valid token is sent', async () => {
+    mockReflector.getAllAndOverride.mockReturnValue(true);
+    const token = jwtService.sign({ sub: 'user-1', email: 'a@example.com' });
+    const request: Record<string, unknown> = {
+      headers: { authorization: `Bearer ${token}` },
+    };
+    const ctx = makeContext(request);
+
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    expect((request.user as Record<string, unknown>)?.sub).toBe('user-1');
+  });
+
+  it('proceeds anonymously on a @Public() route when the token is invalid', async () => {
+    mockReflector.getAllAndOverride.mockReturnValue(true);
+    const request: Record<string, unknown> = {
+      headers: { authorization: 'Bearer not-a-valid-jwt' },
+    };
+    const ctx = makeContext(request);
+
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    expect(request.user).toBeUndefined();
+  });
+
+  it('proceeds anonymously on a @Public() route when the token is expired', async () => {
+    mockReflector.getAllAndOverride.mockReturnValue(true);
+    const expiredToken = jwtService.sign(
+      { sub: 'user-1', email: 'a@example.com' },
+      { expiresIn: -60 },
+    );
+    const request: Record<string, unknown> = {
+      headers: { authorization: `Bearer ${expiredToken}` },
+    };
+    const ctx = makeContext(request);
+
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    expect(request.user).toBeUndefined();
   });
 
   it('passes with a valid JWT and attaches payload to request.user', async () => {
