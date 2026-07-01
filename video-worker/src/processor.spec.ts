@@ -1,8 +1,20 @@
 type Handler = (...args: any[]) => void;
+type FakeWriteStream = {
+  on: jest.Mock;
+  close: jest.Mock;
+  emit: (event: string, ...args: unknown[]) => void;
+};
+type FfmpegChain = {
+  seekInput: jest.Mock;
+  frames: jest.Mock;
+  output: jest.Mock;
+  on: jest.Mock;
+  run: jest.Mock;
+};
 
-function makeFakeWriteStream() {
+function makeFakeWriteStream(): FakeWriteStream {
   const handlers: Record<string, Handler[]> = {};
-  const stream = {
+  const stream: FakeWriteStream = {
     on: jest.fn((event: string, cb: Handler) => {
       handlers[event] = handlers[event] || [];
       handlers[event].push(cb);
@@ -16,9 +28,9 @@ function makeFakeWriteStream() {
   return stream;
 }
 
-function makeFfmpegChain() {
+function makeFfmpegChain(): FfmpegChain {
   const handlers: Record<string, Handler[]> = {};
-  const chain = {
+  const chain: FfmpegChain = {
     seekInput: jest.fn(() => chain),
     frames: jest.fn(() => chain),
     output: jest.fn(() => chain),
@@ -38,18 +50,18 @@ const httpGet = jest.fn();
 const fsMkdtempSync = jest.fn(() => '/tmp/video-test');
 const fsReadFileSync = jest.fn(() => Buffer.from('fake-thumbnail-bytes'));
 const fsRmSync = jest.fn();
-let fakeWriteStream: ReturnType<typeof makeFakeWriteStream>;
+let fakeWriteStream: FakeWriteStream;
 const fsCreateWriteStream = jest.fn(() => fakeWriteStream);
 
 jest.mock('node:fs', () => ({
-  mkdtempSync: (...args: unknown[]) => fsMkdtempSync(...args),
-  createWriteStream: (...args: unknown[]) => fsCreateWriteStream(...args),
-  readFileSync: (...args: unknown[]) => fsReadFileSync(...args),
-  rmSync: (...args: unknown[]) => fsRmSync(...args),
+  mkdtempSync: fsMkdtempSync,
+  createWriteStream: fsCreateWriteStream,
+  readFileSync: fsReadFileSync,
+  rmSync: fsRmSync,
 }));
 
 jest.mock('node:http', () => ({
-  get: (...args: unknown[]) => httpGet(...args),
+  get: httpGet,
 }));
 
 jest.mock('node:https', () => ({
@@ -57,33 +69,31 @@ jest.mock('node:https', () => ({
 }));
 
 const ffprobeMock = jest.fn();
-let ffmpegChain: ReturnType<typeof makeFfmpegChain>;
-const ffmpegFn = jest.fn(() => ffmpegChain);
+let ffmpegChain: FfmpegChain;
+const ffmpegFn: jest.Mock & { ffprobe?: jest.Mock } = jest.fn(() => ffmpegChain);
+ffmpegFn.ffprobe = ffprobeMock;
 
-jest.mock('fluent-ffmpeg', () => {
-  const fn = (...args: unknown[]) => ffmpegFn(...args);
-  (fn as unknown as { ffprobe: typeof ffprobeMock }).ffprobe = (
-    ...args: unknown[]
-  ) => ffprobeMock(...args);
-  return { __esModule: true, default: fn };
-});
+jest.mock('fluent-ffmpeg', () => ({
+  __esModule: true,
+  default: ffmpegFn,
+}));
 
 const getPresignedGetUrl = jest.fn();
 const uploadBuffer = jest.fn();
 jest.mock('./minio-client', () => ({
   BUCKET_VIDEOS: 'videos',
   BUCKET_THUMBNAILS: 'thumbnails',
-  getPresignedGetUrl: (...args: unknown[]) => getPresignedGetUrl(...args),
-  uploadBuffer: (...args: unknown[]) => uploadBuffer(...args),
+  getPresignedGetUrl,
+  uploadBuffer,
 }));
 
 const getVideoById = jest.fn();
 const updateVideoProcessed = jest.fn();
 const updateVideoFailed = jest.fn();
 jest.mock('./database', () => ({
-  getVideoById: (...args: unknown[]) => getVideoById(...args),
-  updateVideoProcessed: (...args: unknown[]) => updateVideoProcessed(...args),
-  updateVideoFailed: (...args: unknown[]) => updateVideoFailed(...args),
+  getVideoById,
+  updateVideoProcessed,
+  updateVideoFailed,
 }));
 
 import { processVideo } from './processor';

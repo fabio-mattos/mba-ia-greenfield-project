@@ -35,3 +35,7 @@ export async function getVideoById(
   );
   return result.rows[0] ?? null;
 }
+
+export async function closePool(): Promise<void> {
+  await pool.end();
+}
