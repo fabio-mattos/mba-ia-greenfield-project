@@ -5,19 +5,23 @@ import { getSession } from "@/lib/auth/session";
 
 export async function POST(
   _request: Request,
-  { params }: { params: Promise<{ id: string }> },
+  // Route segment is named [slug] only to satisfy Next.js's constraint that
+  // sibling dynamic segments under app/api/videos/ share one param name
+  // (every other route here is [slug]) — the value passed through is
+  // actually the video id, matching the upstream path's {id} placeholder.
+  { params }: { params: Promise<{ slug: string }> },
 ) {
   const session = await getSession();
   if (!session.isLoggedIn) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const { id } = await params;
+  const { slug: videoId } = await params;
 
   const { error, response } = await upstream.POST(
     "/videos/{id}/upload/confirm",
     {
-      params: { path: { id } },
+      params: { path: { id: videoId } },
       headers: { Authorization: `Bearer ${session.accessToken}` },
     },
   );

@@ -382,4 +382,127 @@ describe('VideosService (integration) — management endpoints', () => {
       expect(result.map((v) => v.id)).toEqual([sameCategory.id]);
     });
   });
+
+  describe('listPublicVideos', () => {
+    it('only returns READY/PUBLIC videos, ordered by published_at desc', async () => {
+      const channel = await createChannelWithUser();
+      const older = await createVideo(channel.id, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+        published_at: new Date('2026-01-01'),
+      });
+      const newer = await createVideo(channel.id, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+        published_at: new Date('2026-02-01'),
+      });
+      await createVideo(channel.id, { status: VideoStatus.DRAFT });
+      await createVideo(channel.id, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.UNLISTED,
+        published_at: new Date('2026-03-01'),
+      });
+
+      const result = await videosService.listPublicVideos({
+        page: 1,
+        limit: 10,
+      });
+
+      expect(result.data.map((v) => v.id)).toEqual([newer.id, older.id]);
+      expect(result.total).toBe(2);
+    });
+
+    it('filters by search term matching title or channel nickname', async () => {
+      const channel = await createChannelWithUser();
+      const match = await createVideo(channel.id, {
+        title: 'Learning TypeScript',
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+        published_at: new Date(),
+      });
+      await createVideo(channel.id, {
+        title: 'Unrelated topic',
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+        published_at: new Date(),
+      });
+
+      const result = await videosService.listPublicVideos({
+        search: 'typescript',
+        page: 1,
+        limit: 10,
+      });
+
+      expect(result.data.map((v) => v.id)).toEqual([match.id]);
+    });
+
+    it('filters by category slug', async () => {
+      const channel = await createChannelWithUser();
+      const category = await categoryRepository.save(
+        categoryRepository.create({ name: 'Educação', slug: 'educacao' }),
+      );
+      const inCategory = await createVideo(channel.id, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+        category_id: category.id,
+        published_at: new Date(),
+      });
+      await createVideo(channel.id, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+        published_at: new Date(),
+      });
+
+      const result = await videosService.listPublicVideos({
+        categorySlug: 'educacao',
+        page: 1,
+        limit: 10,
+      });
+
+      expect(result.data.map((v) => v.id)).toEqual([inCategory.id]);
+    });
+
+    it('filters by channel nickname', async () => {
+      const channelA = await createChannelWithUser();
+      const channelB = await createChannelWithUser();
+      const fromA = await createVideo(channelA.id, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+        published_at: new Date(),
+      });
+      await createVideo(channelB.id, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+        published_at: new Date(),
+      });
+
+      const result = await videosService.listPublicVideos({
+        channelNickname: channelA.nickname,
+        page: 1,
+        limit: 10,
+      });
+
+      expect(result.data.map((v) => v.id)).toEqual([fromA.id]);
+    });
+
+    it('paginates results and computes total_pages', async () => {
+      const channel = await createChannelWithUser();
+      for (let i = 0; i < 3; i++) {
+        await createVideo(channel.id, {
+          status: VideoStatus.READY,
+          visibility: VideoVisibility.PUBLIC,
+          published_at: new Date(),
+        });
+      }
+
+      const result = await videosService.listPublicVideos({
+        page: 1,
+        limit: 2,
+      });
+
+      expect(result.data).toHaveLength(2);
+      expect(result.total).toBe(3);
+      expect(result.total_pages).toBe(2);
+    });
+  });
 });

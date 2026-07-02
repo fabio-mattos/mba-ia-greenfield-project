@@ -11,6 +11,7 @@ import { ValidationExceptionFilter } from '../src/common/filters/validation-exce
 import { cleanAllTables } from '../src/test/create-test-data-source';
 import { User } from '../src/users/entities/user.entity';
 import { Channel } from '../src/channels/entities/channel.entity';
+import { Category } from '../src/categories/entities/category.entity';
 import {
   Video,
   VideoStatus,
@@ -23,6 +24,7 @@ describe('Videos management (e2e)', () => {
   let userRepository: Repository<User>;
   let channelRepository: Repository<Channel>;
   let videoRepository: Repository<Video>;
+  let categoryRepository: Repository<Category>;
   let throttlerStorage: ThrottlerStorageService;
 
   beforeAll(async () => {
@@ -48,6 +50,7 @@ describe('Videos management (e2e)', () => {
     userRepository = dataSource.getRepository(User);
     channelRepository = dataSource.getRepository(Channel);
     videoRepository = dataSource.getRepository(Video);
+    categoryRepository = dataSource.getRepository(Category);
     throttlerStorage =
       moduleFixture.get<ThrottlerStorageService>(ThrottlerStorage);
   });
@@ -384,6 +387,104 @@ describe('Videos management (e2e)', () => {
         .expect(200);
 
       expect(Array.isArray(res.body)).toBe(true);
+    });
+  });
+
+  describe('GET /videos (home/search)', () => {
+    it('returns only published public/unlisted-excluded videos matching a search term', async () => {
+      const { channelId } = await registerConfirmAndLogin(
+        'search-home@example.com',
+      );
+      const match = await createVideo(channelId, {
+        title: 'Learning NestJS',
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+        published_at: new Date(),
+      });
+      await createVideo(channelId, {
+        title: 'Unrelated',
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+        published_at: new Date(),
+      });
+      await createVideo(channelId, {
+        title: 'Learning NestJS draft',
+        status: VideoStatus.DRAFT,
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/videos')
+        .query({ search: 'nestjs' })
+        .expect(200);
+
+      expect(res.body.data.map((v: { id: string }) => v.id)).toEqual([
+        match.id,
+      ]);
+      expect(res.body.total).toBe(1);
+    });
+
+    it('filters by category slug', async () => {
+      const { channelId } = await registerConfirmAndLogin(
+        'search-category@example.com',
+      );
+      const category = await categoryRepository.save(
+        categoryRepository.create({ name: 'Música', slug: 'musica-home' }),
+      );
+      const inCategory = await createVideo(channelId, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+        category_id: category.id,
+        published_at: new Date(),
+      });
+      await createVideo(channelId, {
+        status: VideoStatus.READY,
+        visibility: VideoVisibility.PUBLIC,
+        published_at: new Date(),
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/videos')
+        .query({ category: 'musica-home' })
+        .expect(200);
+
+      expect(res.body.data.map((v: { id: string }) => v.id)).toEqual([
+        inCategory.id,
+      ]);
+    });
+
+    it('paginates results honoring page and limit', async () => {
+      const { channelId } = await registerConfirmAndLogin(
+        'search-page@example.com',
+      );
+      for (let i = 0; i < 3; i++) {
+        await createVideo(channelId, {
+          status: VideoStatus.READY,
+          visibility: VideoVisibility.PUBLIC,
+          published_at: new Date(),
+        });
+      }
+
+      const res = await request(app.getHttpServer())
+        .get('/videos')
+        .query({ page: 1, limit: 2 })
+        .expect(200);
+
+      expect(res.body.data).toHaveLength(2);
+      expect(res.body.total).toBe(3);
+      expect(res.body.total_pages).toBe(2);
+    });
+
+    it('never includes draft or unpublished videos', async () => {
+      const { channelId } = await registerConfirmAndLogin(
+        'search-hidden@example.com',
+      );
+      await createVideo(channelId, { status: VideoStatus.DRAFT });
+      await createVideo(channelId, { status: VideoStatus.PROCESSING });
+
+      const res = await request(app.getHttpServer()).get('/videos').expect(200);
+
+      expect(res.body.data).toHaveLength(0);
+      expect(res.body.total).toBe(0);
     });
   });
 });

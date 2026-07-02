@@ -12,6 +12,10 @@ export const AppDataSource = new DataSource({
   password: dbConfig.password,
   database: dbConfig.name,
   synchronize: false,
-  migrations: ['src/database/migrations/*.ts'],
+  // __dirname-relative (not CWD-relative) so this resolves correctly both in
+  // dev (ts-node, running from src/) and in the compiled production build
+  // (node, running from dist/) — a CWD-relative 'src/...' glob only ever
+  // matches in dev, silently finding zero migrations in production.
+  migrations: [__dirname + '/migrations/*{.ts,.js}'],
   entities: ['src/**/*.entity.ts'],
 });
