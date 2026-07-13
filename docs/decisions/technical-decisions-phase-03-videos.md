@@ -141,6 +141,9 @@ _Subprojects in scope:_
 
 **Libraries:** fluent-ffmpeg, @types/fluent-ffmpeg
 
+**Revisions:**
+- 2026-07-13 — Clarified the exact metadata fields extracted by `ffprobe`, resolving an ambiguity raised by `plan-validate` (AMB-1: "metadados" in project-plan.md is not itemized). Rationale: `plan-build` needs a concrete field list for the Video entity's Data Model. Fields: `durationInSeconds` (float), `width`/`height` (int, from the video stream), `codec` (string, e.g. `h264`), `container`/`format` (string, e.g. `mp4`), `bitrateKbps` (int), `fileSizeBytes` (bigint, from the uploaded object, not ffprobe). All are read via a single `ffprobe` call (`ffprobe.format` + first video stream in `ffprobe.streams`) before generating the thumbnail.
+
 ---
 
 ## TD-05: Unique Public Video Identifier
@@ -229,6 +232,35 @@ _Subprojects in scope:_
 
 ---
 
+## TD-08: Access Control for Non-Ready Videos & Status Check Endpoint
+
+**Scope:** Backend
+
+**Capability:** Transversal — covers: "Pré-cadastro automático do vídeo como rascunho ao iniciar o upload", "Reprodução via streaming (sem necessidade de download completo)"
+
+**Context:** Added during `plan-validate` (AMB-2/AMB-3): the project plan's principle "qualquer pessoa pode assistir vídeos sem cadastro" applies to published content, but Phase 03 has no visibility/publication flow yet (that's Phase 04). Two related gaps needed a decision: (1) whether `draft` / `processing` / `failed` videos are streamable/downloadable by anyone with the URL, and (2) how a client (or, in this backend-only phase, an API consumer) observes a video's status moving from `processing` to `ready` — there is no capability bullet in this phase for "listing" or "viewing video details", but the pre-registration-as-draft capability is meaningless without *some* way to read the row back.
+
+**Options:**
+
+### Option A: Owner-only visibility until `ready`; a minimal `GET /videos/:id` detail endpoint is part of this phase
+- `GET /videos/:id` (and the streaming/download endpoints) return `404` for anyone but the owning channel's user while status is `draft`, `processing`, or `failed`. Once `ready`, the same endpoints are public (no auth), consistent with the platform's anonymous-viewing principle. `GET /videos/:id` returns id, title, status, duration/metadata (when available), and — only when `ready` — the streaming/download URLs and thumbnail. This is the minimum surface needed for Phase 03 to be usable/testable at all; it does not include listing, editing, categories, or visibility toggles (Phase 04).
+- **Pros:** Matches the project's existing anonymous-access principle without inventing a "public" flag ahead of Phase 04's real visibility feature. Keeps the phase's surface minimal — one detail endpoint, no list endpoint, no edit endpoint. Draft/processing videos (which may reference a not-yet-valid file) are never exposed to the public.
+- **Cons:** None significant — this is the narrowest endpoint that makes the phase coherent.
+
+### Option B: All videos are public regardless of status
+- **Pros:** Simplest rule — no ownership check anywhere in this phase.
+- **Cons:** Exposes not-yet-processed or failed videos (and their partially-written metadata) to anyone who guesses/receives a UUID before processing completes — inconsistent with "processamento automático" being a gate before a video is truly watchable.
+
+### Option C: No detail/status endpoint in this phase at all
+- **Pros:** Smallest possible surface.
+- **Cons:** Makes the phase's own acceptance criteria unverifiable from the outside (no way to observe a video's status transition from `processing` to `ready`, which the Definition of Done explicitly requires as observable behavior) and unimplementable in practice (the worker needs no new reads, but *some* actor must be able to confirm the video reached `ready` — even the phase's own E2E tests need this endpoint to assert success).
+
+**Recommendation:** **Option A** — the narrowest endpoint that keeps Phase 03 internally coherent and testable, without pulling in any of Phase 04's scope (editing, categories, listing, public/unlisted visibility).
+
+**Decision:** A (owner-only until `ready`, minimal `GET /videos/:id` in scope)
+
+---
+
 ## Decisions Summary
 
 | ID | Decision | Recommendation | Choice |
@@ -240,3 +272,4 @@ _Subprojects in scope:_
 | TD-05 | Unique Public Video Identifier | Use PK UUID directly | A (Use PK UUID directly) |
 | TD-06 | Streaming & Download Delivery Mechanism | Presigned-redirect (206 via MinIO) | B (Presigned-redirect) |
 | TD-07 | Video Status Lifecycle & Failure Handling | 4-state enum + automatic retry | A (4-state enum + automatic retry) |
+| TD-08 | Access Control for Non-Ready Videos & Status Check Endpoint | Owner-only until ready + minimal GET /videos/:id | A (Owner-only until ready + minimal GET /videos/:id) |
