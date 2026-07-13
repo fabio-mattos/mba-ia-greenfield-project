@@ -2,10 +2,11 @@
 kind: phase
 name: phase-03-upload-processamento
 sources_mtime:
-  docs/phases/phase-03-upload-processamento/context.md: "2026-07-01T19:05:41-03:00"
-  docs/decisions/technical-decisions-phase-03-upload-processamento.md: "2026-07-01T19:05:06-03:00"
+  docs/phases/phase-03-upload-processamento/context.md: "2026-07-13T18:21:03-03:00"
+  docs/decisions/technical-decisions-phase-03-upload-processamento.md: "2026-07-13T18:15:24-03:00"
   docs/phases/phase-02-auth/phase-02-auth.md: "2026-06-29T18:30:43-03:00"
-note: "Retroactive — this plan was written after the code already existed (see the `note` in context.md and technical-decisions-phase-03-upload-processamento.md). It closes the gap flagged in validation.md: context/validation/progress existed for Fase 03 but the plan artifact with Step Implementations and Technical Specifications did not, and the original work had been committed directly to main. Reconstructed from the actual implementation on branch `docs/phase-03-plano-retroativo` (branched from `dev`), following the same context → validate → build flow used for prospective phases."
+  docs/phases/phase-03-upload-processamento/library-refs.md: "2026-07-13T18:21:03-03:00"
+note: "Retroactive — this plan was written after the code already existed (see the `note` in context.md and technical-decisions-phase-03-upload-processamento.md). It closes the gap flagged in validation.md: context/validation/progress existed for Fase 03 but the plan artifact with Step Implementations and Technical Specifications did not, and the original work had been committed directly to main. Reconstructed from the actual implementation on branch `docs/phase-03-plano-retroativo` (branched from `dev`), following the same context → validate → build flow used for prospective phases. **2026-07-13 correction pass:** re-ran /plan-context → /plan-validate → /plan-resolve → /plan-validate → /plan-build end-to-end per code review feedback. /plan-validate found 6 real issues on the first pass (non-canonical `Scope: video-worker/` on 3 TDs; 5 capabilities with no TD explicitly citing them, only a vague blanket Transversal marker) — closed by narrowing/broadening existing TDs' `Capability:` fields and adding TD-08 (Video URL Uniqueness Strategy), then /plan-resolve materialized the previously-missing `library-refs.md`. This artifact's Technical Specifications were patched to cite TD-08; the Step Implementations below are unchanged (they already described the actual shipped code correctly)."
 ---
 
 # Phase 03 — Upload e Processamento de Vídeos
@@ -231,7 +232,7 @@ Deliver direct-to-storage video upload (files up to 10GB, without impacting API 
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
 | id | uuid | PK, generated | |
-| slug | varchar(12) | unique, not null | 11-char random slug (`generateVideoSlug`) — guarantees a unique URL per video (capability: "URL única por vídeo") |
+| slug | varchar(12) | unique, not null | 11-char random slug (`generateVideoSlug`) — guarantees a unique URL per video (per TD-08) |
 | status | enum (`video_status_enum`) | not null, default `draft` | `draft \| processing \| ready \| failed` — drives the upload/processing lifecycle owned by this phase |
 | file_key | varchar | nullable | Object key of the uploaded file in the `videos` MinIO bucket; set at `initiateUpload`, read by the worker and by `getStreamUrl`/`getDownloadUrl` |
 | thumbnail_key | varchar | nullable | Object key of the generated thumbnail in the `thumbnails` MinIO bucket; set by the worker after processing |
@@ -282,7 +283,7 @@ _Note: the `videos` table and its migration (`CreateVideos`) were created as a s
 
 ---
 
-#### GET /videos/:slug/stream (SI-03.2)
+#### GET /videos/:slug/stream (SI-03.2, per TD-04)
 
 **Authorization:** `@Public()`
 
@@ -295,7 +296,7 @@ _Note: the `videos` table and its migration (`CreateVideos`) were created as a s
 
 ---
 
-#### GET /videos/:slug/download (SI-03.2)
+#### GET /videos/:slug/download (SI-03.2, per TD-04)
 
 **Authorization:** `@Public()`
 
