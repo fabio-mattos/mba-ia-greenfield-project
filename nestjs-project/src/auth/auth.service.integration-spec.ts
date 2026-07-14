@@ -102,7 +102,7 @@ describe('AuthService — register (integration)', () => {
     dataSource = module.get(DataSource);
     verificationTokenRepository = dataSource.getRepository(VerificationToken);
     userRepository = dataSource.getRepository(User);
-  });
+  }, 20000);
 
   afterAll(async () => {
     await dataSource.destroy();
@@ -193,7 +193,7 @@ describe('AuthService — confirm (integration)', () => {
     dataSource = module.get(DataSource);
     verificationTokenRepository = dataSource.getRepository(VerificationToken);
     userRepository = dataSource.getRepository(User);
-  });
+  }, 20000);
 
   afterAll(async () => {
     await dataSource.destroy();
