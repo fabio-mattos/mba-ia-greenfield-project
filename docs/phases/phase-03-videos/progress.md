@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 6/9 completed
+**SIs:** 7/9 completed
 
 ### SI-03.1 — Object Storage Module (MinIO)
 - **Status:** completed
@@ -42,9 +42,12 @@
   - Container `worker` roda o processo continuamente (`command: npm run start:worker`), ao contrário de `nestjs-api` que fica ocioso por padrão — o worker é um serviço de background que precisa estar de fato ativo para a fila ser consumida.
 
 ### SI-03.7 — Video Processing Consumer
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 4 unit + 1 integration passing (roda no container `worker`)
+- **Observations:**
+  - `@nestjs/bullmq` fecha a conexão ioredis do `Worker` de forma assíncrona; sem uma folga após `module.close()` no teste de `WorkerModule`, o fechamento vazava como unhandled rejection para o próximo arquivo executado pelo `--runInBand` (`ffmpeg.service.integration-spec.ts` chegou a falhar com "Connection is closed" por esse motivo). Corrigido com uma pequena espera após o close.
+  - `QueueModule` precisou de `maxRetriesPerRequest: null` na conexão Redis — exigência do BullMQ para conexões usadas por instâncias `Worker` (consumidoras), não apenas produtoras.
+  - O worker real (container sempre ativo) processa de fato os jobs enfileirados pelos testes de `VideosService`/e2e (que sobem arquivos fake de poucos bytes) — isso gera falhas esperadas de FFmpeg nos logs do worker em background, sem afetar as asserções dos testes (que não esperam o processamento terminar).
 
 ### SI-03.8 — Video Detail Endpoint & Access Control
 - **Status:** pending
