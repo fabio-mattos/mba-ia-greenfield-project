@@ -1,4 +1,4 @@
-import { QueryFailedError } from 'typeorm';
+import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import { ChannelsService } from './channels.service';
 import { Channel } from './entities/channel.entity';
 
@@ -37,6 +37,47 @@ function makeDataSource(manager: any): any {
 }
 
 describe('ChannelsService', () => {
+  describe('findByUserId', () => {
+    function makeRepo(
+      channel: Channel | null,
+    ): jest.Mocked<Pick<Repository<Channel>, 'findOne'>> {
+      return { findOne: jest.fn().mockResolvedValue(channel) };
+    }
+
+    function makeDataSourceWithRepo(
+      repo: jest.Mocked<Pick<Repository<Channel>, 'findOne'>>,
+    ): jest.Mocked<Pick<DataSource, 'getRepository'>> {
+      return {
+        getRepository: jest.fn().mockReturnValue(repo),
+      } as unknown as jest.Mocked<Pick<DataSource, 'getRepository'>>;
+    }
+
+    it('returns the channel for a given user id', async () => {
+      const channel = makeChannel('dave');
+      const repo = makeRepo(channel);
+      const dataSource = makeDataSourceWithRepo(repo);
+      const service = new ChannelsService(dataSource as unknown as DataSource);
+
+      const result = await service.findByUserId('user-id');
+
+      expect(dataSource.getRepository).toHaveBeenCalledWith(Channel);
+      expect(repo.findOne).toHaveBeenCalledWith({
+        where: { user_id: 'user-id' },
+      });
+      expect(result).toBe(channel);
+    });
+
+    it('returns null when no channel exists for the user', async () => {
+      const repo = makeRepo(null);
+      const dataSource = makeDataSourceWithRepo(repo);
+      const service = new ChannelsService(dataSource as unknown as DataSource);
+
+      const result = await service.findByUserId('user-id');
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe('createChannel', () => {
     it('derives nickname from email prefix and saves when no collision', async () => {
       const channel = makeChannel('test');
