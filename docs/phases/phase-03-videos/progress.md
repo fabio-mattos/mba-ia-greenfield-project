@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 8/9 completed
+**SIs:** 9/9 completed
 
 ### SI-03.1 — Object Storage Module (MinIO)
 - **Status:** completed
@@ -55,6 +55,8 @@
 - **Observations:** none
 
 ### SI-03.9 — Streaming & Download Endpoints
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 8 unit + 5 integration + 3 e2e passing
+- **Observations:**
+  - `findForViewer`, `getStreamUrl` e `getDownloadUrl` compartilham o mesmo helper privado `findVisibleVideoOrThrow` (regra de visibilidade: dono vê em qualquer status, demais só quando `ready`); `getStreamUrl`/`getDownloadUrl` acrescentam a exigência de `status === 'ready'` para todos, inclusive o dono, lançando `VideoNotReadyException` (409) caso contrário.
+  - Endpoints usam o decorator `@Redirect()` do Nest (handler retorna `{ url, statusCode: 302 }`) em vez de `@Res()` bruto do Express — mantém o controller alinhado ao padrão declarativo do restante do projeto.
