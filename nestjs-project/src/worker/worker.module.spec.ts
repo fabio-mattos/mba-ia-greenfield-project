@@ -10,5 +10,9 @@ describe('WorkerModule', () => {
 
     expect(module.get(FfmpegService)).toBeDefined();
     await module.close();
+    // @nestjs/bullmq closes the underlying ioredis connection asynchronously;
+    // without this grace period the close can bleed an unhandled rejection
+    // into whichever test file Jest --runInBand happens to run next.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }, 30000);
 });
