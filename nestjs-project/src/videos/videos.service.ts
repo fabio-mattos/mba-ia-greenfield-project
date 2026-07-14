@@ -15,6 +15,7 @@ import {
 import { Video, VideoStatus } from './entities/video.entity';
 import { InitiateUploadDto } from './dto/initiate-upload.dto';
 import { UploadedPartDto } from './dto/complete-upload.dto';
+import { VideoResponseDto } from './dto/video-response.dto';
 import {
   MAX_VIDEO_FILE_SIZE_BYTES,
   getFileExtension,
@@ -135,5 +136,34 @@ export class VideosService {
       { videoId: video.id },
       VIDEO_PROCESSING_JOB_OPTIONS,
     );
+  }
+
+  async findForViewer(
+    id: string,
+    viewerUserId: string | undefined,
+  ): Promise<VideoResponseDto> {
+    const video = await this.videoRepository.findOne({
+      where: { id },
+      relations: ['channel'],
+    });
+
+    const isOwner =
+      viewerUserId !== undefined && video?.channel.user_id === viewerUserId;
+    if (!video || (video.status !== VideoStatus.READY && !isOwner)) {
+      throw new VideoNotFoundException();
+    }
+
+    return {
+      id: video.id,
+      title: video.title,
+      status: video.status,
+      durationInSeconds: video.duration_in_seconds,
+      width: video.width,
+      height: video.height,
+      codec: video.codec,
+      container: video.container,
+      bitrateKbps: video.bitrate_kbps,
+      createdAt: video.created_at,
+    };
   }
 }

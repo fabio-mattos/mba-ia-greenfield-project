@@ -197,4 +197,51 @@ describe('VideosService (integration)', () => {
       ).rejects.toThrow(VideoUploadNotInProgressException);
     }, 20000);
   });
+
+  describe('findForViewer', () => {
+    it('lets the owner see a draft video', async () => {
+      const channel = await createChannel();
+      const { videoId } = await videosService.initiateUpload(channel.user_id, {
+        title: 'Owner viewable',
+        originalFileName: 'clip.mp4',
+        fileSizeBytes: 1000,
+        mimeType: 'video/mp4',
+      });
+
+      const result = await videosService.findForViewer(
+        videoId,
+        channel.user_id,
+      );
+      expect(result.status).toBe(VideoStatus.DRAFT);
+    }, 15000);
+
+    it('throws VideoNotFoundException for a non-owner viewing a draft video', async () => {
+      const owner = await createChannel();
+      const other = await createChannel();
+      const { videoId } = await videosService.initiateUpload(owner.user_id, {
+        title: 'Owner only',
+        originalFileName: 'clip.mp4',
+        fileSizeBytes: 1000,
+        mimeType: 'video/mp4',
+      });
+
+      await expect(
+        videosService.findForViewer(videoId, other.user_id),
+      ).rejects.toThrow(VideoNotFoundException);
+    }, 15000);
+
+    it('lets an anonymous viewer see a ready video', async () => {
+      const channel = await createChannel();
+      const { videoId } = await videosService.initiateUpload(channel.user_id, {
+        title: 'Public once ready',
+        originalFileName: 'clip.mp4',
+        fileSizeBytes: 1000,
+        mimeType: 'video/mp4',
+      });
+      await videoRepository.update(videoId, { status: VideoStatus.READY });
+
+      const result = await videosService.findForViewer(videoId, undefined);
+      expect(result.status).toBe(VideoStatus.READY);
+    }, 15000);
+  });
 });

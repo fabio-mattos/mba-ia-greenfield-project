@@ -3,16 +3,24 @@ import type { Repository } from 'typeorm';
 import type { ChannelsService } from '../channels/channels.service';
 import type { Channel } from '../channels/entities/channel.entity';
 import type { StorageService } from '../storage/storage.service';
-import { VideoFileTooLargeException } from '../common/exceptions/domain.exception';
-import { Video } from './entities/video.entity';
+import {
+  VideoFileTooLargeException,
+  VideoNotFoundException,
+} from '../common/exceptions/domain.exception';
+import { Video, VideoStatus } from './entities/video.entity';
 import { MAX_VIDEO_FILE_SIZE_BYTES } from './videos.constants';
 import { VideosService } from './videos.service';
 
-function makeRepo(): jest.Mocked<Pick<Repository<Video>, 'create' | 'save'>> {
+function makeRepo(): jest.Mocked<
+  Pick<Repository<Video>, 'create' | 'save' | 'findOne'>
+> {
   return {
     create: jest.fn((data) => data as Video),
     save: jest.fn().mockResolvedValue(undefined),
-  } as unknown as jest.Mocked<Pick<Repository<Video>, 'create' | 'save'>>;
+    findOne: jest.fn(),
+  } as unknown as jest.Mocked<
+    Pick<Repository<Video>, 'create' | 'save' | 'findOne'>
+  >;
 }
 
 function makeChannelsService(
@@ -96,6 +104,105 @@ describe('VideosService', () => {
       await expect(
         service.initiateUpload('user-without-channel', baseDto),
       ).rejects.toThrow('has no channel');
+    });
+  });
+
+  describe('findForViewer', () => {
+    function makeVideo(overrides: Partial<Video> = {}): Video {
+      return {
+        id: 'video-1',
+        title: 'My video',
+        status: VideoStatus.READY,
+        duration_in_seconds: 12.5,
+        width: 1920,
+        height: 1080,
+        codec: 'h264',
+        container: 'mp4',
+        bitrate_kbps: 1200,
+        created_at: new Date('2026-01-01T00:00:00Z'),
+        channel: { user_id: 'owner-1' },
+        ...overrides,
+      } as Video;
+    }
+
+    it('throws VideoNotFoundException when the video does not exist', async () => {
+      const repo = makeRepo();
+      repo.findOne.mockResolvedValue(null);
+      const service = new VideosService(
+        repo as unknown as Repository<Video>,
+        makeChannelsService() as unknown as ChannelsService,
+        makeStorageService() as unknown as StorageService,
+        makeQueue() as unknown as Queue,
+      );
+
+      await expect(service.findForViewer('missing', undefined)).rejects.toThrow(
+        VideoNotFoundException,
+      );
+    });
+
+    it('returns the video for any viewer when status is ready', async () => {
+      const repo = makeRepo();
+      repo.findOne.mockResolvedValue(makeVideo());
+      const service = new VideosService(
+        repo as unknown as Repository<Video>,
+        makeChannelsService() as unknown as ChannelsService,
+        makeStorageService() as unknown as StorageService,
+        makeQueue() as unknown as Queue,
+      );
+
+      const result = await service.findForViewer('video-1', undefined);
+
+      expect(result.id).toBe('video-1');
+      expect(result.status).toBe(VideoStatus.READY);
+    });
+
+    it('returns the video for the owner even when not ready', async () => {
+      const repo = makeRepo();
+      repo.findOne.mockResolvedValue(
+        makeVideo({ status: VideoStatus.PROCESSING }),
+      );
+      const service = new VideosService(
+        repo as unknown as Repository<Video>,
+        makeChannelsService() as unknown as ChannelsService,
+        makeStorageService() as unknown as StorageService,
+        makeQueue() as unknown as Queue,
+      );
+
+      const result = await service.findForViewer('video-1', 'owner-1');
+
+      expect(result.status).toBe(VideoStatus.PROCESSING);
+    });
+
+    it('throws VideoNotFoundException for a non-owner when not ready', async () => {
+      const repo = makeRepo();
+      repo.findOne.mockResolvedValue(
+        makeVideo({ status: VideoStatus.PROCESSING }),
+      );
+      const service = new VideosService(
+        repo as unknown as Repository<Video>,
+        makeChannelsService() as unknown as ChannelsService,
+        makeStorageService() as unknown as StorageService,
+        makeQueue() as unknown as Queue,
+      );
+
+      await expect(
+        service.findForViewer('video-1', 'someone-else'),
+      ).rejects.toThrow(VideoNotFoundException);
+    });
+
+    it('throws VideoNotFoundException for an anonymous viewer when not ready', async () => {
+      const repo = makeRepo();
+      repo.findOne.mockResolvedValue(makeVideo({ status: VideoStatus.DRAFT }));
+      const service = new VideosService(
+        repo as unknown as Repository<Video>,
+        makeChannelsService() as unknown as ChannelsService,
+        makeStorageService() as unknown as StorageService,
+        makeQueue() as unknown as Queue,
+      );
+
+      await expect(service.findForViewer('video-1', undefined)).rejects.toThrow(
+        VideoNotFoundException,
+      );
     });
   });
 });

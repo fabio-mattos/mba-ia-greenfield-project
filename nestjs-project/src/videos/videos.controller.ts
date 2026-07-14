@@ -1,11 +1,13 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
   ParseIntPipe,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -17,10 +19,13 @@ import {
 import { ApiErrorEnvelope } from '../common/openapi/api-error-envelope.dto';
 import type { JwtPayload } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Public } from '../auth/decorators/public.decorator';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { CompleteUploadDto } from './dto/complete-upload.dto';
 import { InitiateUploadDto } from './dto/initiate-upload.dto';
 import { InitiateUploadResponseDto } from './dto/initiate-upload-response.dto';
 import { UploadPartUrlResponseDto } from './dto/upload-part-url-response.dto';
+import { VideoResponseDto } from './dto/video-response.dto';
 import { VideosService } from './videos.service';
 
 @ApiTags('videos')
@@ -122,5 +127,31 @@ export class VideosController {
     @Body() dto: CompleteUploadDto,
   ): Promise<void> {
     return this.videosService.completeUpload(user.sub, videoId, dto.parts);
+  }
+
+  @Get(':id')
+  @Public()
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get video details',
+    description:
+      'Public once the video is ready. Before that (draft/processing/failed), only the owning channel can see it — any other viewer gets 404.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Video details',
+    type: VideoResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Video not found, or not ready and the viewer is not the owner',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async findOne(
+    @CurrentUser() user: JwtPayload | undefined,
+    @Param('id') videoId: string,
+  ): Promise<VideoResponseDto> {
+    return this.videosService.findForViewer(videoId, user?.sub);
   }
 }

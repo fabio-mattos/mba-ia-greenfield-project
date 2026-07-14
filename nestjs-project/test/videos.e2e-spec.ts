@@ -10,6 +10,7 @@ import { MailService } from '../src/mail/mail.service';
 import { DomainExceptionFilter } from '../src/common/filters/domain-exception.filter';
 import { ValidationExceptionFilter } from '../src/common/filters/validation-exception.filter';
 import { cleanAllTables } from '../src/test/create-test-data-source';
+import { Video, VideoStatus } from '../src/videos/entities/video.entity';
 
 interface LoginResponseBody {
   access_token: string;
@@ -27,6 +28,11 @@ interface ApiErrorResponseBody {
 
 interface UploadPartUrlResponseBody {
   url: string;
+}
+
+interface VideoResponseBody {
+  id: string;
+  status: VideoStatus;
 }
 
 describe('Videos (e2e)', () => {
@@ -227,6 +233,70 @@ describe('Videos (e2e)', () => {
       expect((res.body as ApiErrorResponseBody).error).toBe(
         'VIDEO_UPLOAD_ALREADY_COMPLETED',
       );
+    });
+  });
+
+  describe('GET /videos/:id', () => {
+    async function initiateAsNewUser(email: string): Promise<{
+      token: string;
+      videoId: string;
+    }> {
+      const token = await registerConfirmAndLogin(email);
+      const res = await request(app.getHttpServer())
+        .post('/videos/upload/initiate')
+        .set('Authorization', `Bearer ${token}`)
+        .send(validUploadBody)
+        .expect(201);
+      return {
+        token,
+        videoId: (res.body as InitiateUploadResponseBody).videoId,
+      };
+    }
+
+    it('lets the owner see their own draft video', async () => {
+      const { token, videoId } = await initiateAsNewUser('video9@example.com');
+
+      const res = await request(app.getHttpServer())
+        .get(`/videos/${videoId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect((res.body as VideoResponseBody).status).toBe(VideoStatus.DRAFT);
+    });
+
+    it('returns 404 for an anonymous viewer on a draft video', async () => {
+      const { videoId } = await initiateAsNewUser('video10@example.com');
+
+      await request(app.getHttpServer()).get(`/videos/${videoId}`).expect(404);
+    });
+
+    it('returns 404 for a non-owner on a draft video', async () => {
+      const { videoId } = await initiateAsNewUser('video11@example.com');
+      const otherToken = await registerConfirmAndLogin('video12@example.com');
+
+      await request(app.getHttpServer())
+        .get(`/videos/${videoId}`)
+        .set('Authorization', `Bearer ${otherToken}`)
+        .expect(404);
+    });
+
+    it('lets any anonymous viewer see a ready video', async () => {
+      const { videoId } = await initiateAsNewUser('video13@example.com');
+      await dataSource
+        .getRepository(Video)
+        .update(videoId, { status: VideoStatus.READY });
+
+      const res = await request(app.getHttpServer())
+        .get(`/videos/${videoId}`)
+        .expect(200);
+
+      expect((res.body as VideoResponseBody).status).toBe(VideoStatus.READY);
+    });
+
+    it('returns 404 for an unknown video id', async () => {
+      await request(app.getHttpServer())
+        .get('/videos/00000000-0000-0000-0000-000000000000')
+        .expect(404);
     });
   });
 });
