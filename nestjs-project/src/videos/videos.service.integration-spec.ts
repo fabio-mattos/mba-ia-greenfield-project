@@ -6,6 +6,7 @@ import queueConfig from '../config/queue.config';
 import storageConfig from '../config/storage.config';
 import {
   VideoNotFoundException,
+  VideoNotReadyException,
   VideoUploadAlreadyCompletedException,
   VideoUploadNotInProgressException,
 } from '../common/exceptions/domain.exception';
@@ -242,6 +243,69 @@ describe('VideosService (integration)', () => {
 
       const result = await videosService.findForViewer(videoId, undefined);
       expect(result.status).toBe(VideoStatus.READY);
+    }, 15000);
+  });
+
+  describe('getStreamUrl + getDownloadUrl', () => {
+    async function createReadyVideo() {
+      const channel = await createChannel();
+      const { videoId } = await videosService.initiateUpload(channel.user_id, {
+        title: 'Streamable video',
+        originalFileName: 'clip.mp4',
+        fileSizeBytes: 1000,
+        mimeType: 'video/mp4',
+      });
+      await videoRepository.update(videoId, { status: VideoStatus.READY });
+      return { channel, videoId };
+    }
+
+    it('returns a presigned inline URL for an anonymous viewer once ready', async () => {
+      const { videoId } = await createReadyVideo();
+
+      const url = await videosService.getStreamUrl(videoId, undefined);
+
+      expect(url).toContain('http');
+      expect(url).not.toContain('response-content-disposition');
+    }, 15000);
+
+    it('returns a presigned attachment URL for the download endpoint', async () => {
+      const { videoId } = await createReadyVideo();
+
+      const url = await videosService.getDownloadUrl(videoId, undefined);
+
+      expect(url.toLowerCase()).toContain('response-content-disposition');
+    }, 15000);
+
+    it('throws VideoNotReadyException for the owner when the video is still processing', async () => {
+      const channel = await createChannel();
+      const { videoId } = await videosService.initiateUpload(channel.user_id, {
+        title: 'Not ready yet',
+        originalFileName: 'clip.mp4',
+        fileSizeBytes: 1000,
+        mimeType: 'video/mp4',
+      });
+
+      await expect(
+        videosService.getStreamUrl(videoId, channel.user_id),
+      ).rejects.toThrow(VideoNotReadyException);
+      await expect(
+        videosService.getDownloadUrl(videoId, channel.user_id),
+      ).rejects.toThrow(VideoNotReadyException);
+    }, 15000);
+
+    it('throws VideoNotFoundException for a non-owner when the video is still processing', async () => {
+      const owner = await createChannel();
+      const other = await createChannel();
+      const { videoId } = await videosService.initiateUpload(owner.user_id, {
+        title: 'Owner only',
+        originalFileName: 'clip.mp4',
+        fileSizeBytes: 1000,
+        mimeType: 'video/mp4',
+      });
+
+      await expect(
+        videosService.getStreamUrl(videoId, other.user_id),
+      ).rejects.toThrow(VideoNotFoundException);
     }, 15000);
   });
 });

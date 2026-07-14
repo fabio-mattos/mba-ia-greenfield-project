@@ -6,6 +6,7 @@ import type { StorageService } from '../storage/storage.service';
 import {
   VideoFileTooLargeException,
   VideoNotFoundException,
+  VideoNotReadyException,
 } from '../common/exceptions/domain.exception';
 import { Video, VideoStatus } from './entities/video.entity';
 import { MAX_VIDEO_FILE_SIZE_BYTES } from './videos.constants';
@@ -31,8 +32,15 @@ function makeChannelsService(
 
 function makeStorageService(
   uploadId = 'upload-123',
-): jest.Mocked<Pick<StorageService, 'createMultipartUpload'>> {
-  return { createMultipartUpload: jest.fn().mockResolvedValue(uploadId) };
+): jest.Mocked<
+  Pick<StorageService, 'createMultipartUpload' | 'getDownloadUrl'>
+> {
+  return {
+    createMultipartUpload: jest.fn().mockResolvedValue(uploadId),
+    getDownloadUrl: jest
+      .fn()
+      .mockResolvedValue('https://storage.example/signed-url'),
+  };
 }
 
 function makeQueue(): jest.Mocked<Pick<Queue, 'add'>> {
@@ -204,5 +212,98 @@ describe('VideosService', () => {
         VideoNotFoundException,
       );
     });
+  });
+
+  describe('getStreamUrl / getDownloadUrl', () => {
+    function makeVideo(overrides: Partial<Video> = {}): Video {
+      return {
+        id: 'video-1',
+        title: 'My video',
+        status: VideoStatus.READY,
+        original_file_key: 'videos/video-1/original.mp4',
+        original_file_name: 'movie.mp4',
+        channel: { user_id: 'owner-1' },
+        ...overrides,
+      } as Video;
+    }
+
+    it('getStreamUrl returns an inline presigned URL when the video is ready', async () => {
+      const repo = makeRepo();
+      repo.findOne.mockResolvedValue(makeVideo());
+      const storageService = makeStorageService();
+      const service = new VideosService(
+        repo as unknown as Repository<Video>,
+        makeChannelsService() as unknown as ChannelsService,
+        storageService as unknown as StorageService,
+        makeQueue() as unknown as Queue,
+      );
+
+      const url = await service.getStreamUrl('video-1', undefined);
+
+      expect(url).toBe('https://storage.example/signed-url');
+      expect(storageService.getDownloadUrl).toHaveBeenCalledWith(
+        'videos/video-1/original.mp4',
+      );
+    });
+
+    it('getDownloadUrl returns an attachment presigned URL when the video is ready', async () => {
+      const repo = makeRepo();
+      repo.findOne.mockResolvedValue(makeVideo());
+      const storageService = makeStorageService();
+      const service = new VideosService(
+        repo as unknown as Repository<Video>,
+        makeChannelsService() as unknown as ChannelsService,
+        storageService as unknown as StorageService,
+        makeQueue() as unknown as Queue,
+      );
+
+      const url = await service.getDownloadUrl('video-1', undefined);
+
+      expect(url).toBe('https://storage.example/signed-url');
+      expect(storageService.getDownloadUrl).toHaveBeenCalledWith(
+        'videos/video-1/original.mp4',
+        { attachment: true, filename: 'movie.mp4' },
+      );
+    });
+
+    it.each(['getStreamUrl', 'getDownloadUrl'] as const)(
+      '%s throws VideoNotReadyException for the owner when the video is not ready',
+      async (methodName) => {
+        const repo = makeRepo();
+        repo.findOne.mockResolvedValue(
+          makeVideo({ status: VideoStatus.PROCESSING }),
+        );
+        const service = new VideosService(
+          repo as unknown as Repository<Video>,
+          makeChannelsService() as unknown as ChannelsService,
+          makeStorageService() as unknown as StorageService,
+          makeQueue() as unknown as Queue,
+        );
+
+        await expect(service[methodName]('video-1', 'owner-1')).rejects.toThrow(
+          VideoNotReadyException,
+        );
+      },
+    );
+
+    it.each(['getStreamUrl', 'getDownloadUrl'] as const)(
+      '%s throws VideoNotFoundException for a non-owner when the video is not ready',
+      async (methodName) => {
+        const repo = makeRepo();
+        repo.findOne.mockResolvedValue(
+          makeVideo({ status: VideoStatus.PROCESSING }),
+        );
+        const service = new VideosService(
+          repo as unknown as Repository<Video>,
+          makeChannelsService() as unknown as ChannelsService,
+          makeStorageService() as unknown as StorageService,
+          makeQueue() as unknown as Queue,
+        );
+
+        await expect(
+          service[methodName]('video-1', 'someone-else'),
+        ).rejects.toThrow(VideoNotFoundException);
+      },
+    );
   });
 });

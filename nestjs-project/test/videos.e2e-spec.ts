@@ -299,4 +299,62 @@ describe('Videos (e2e)', () => {
         .expect(404);
     });
   });
+
+  describe('GET /videos/:id/stream and /download', () => {
+    async function initiateAsNewUser(email: string): Promise<{
+      token: string;
+      videoId: string;
+    }> {
+      const token = await registerConfirmAndLogin(email);
+      const res = await request(app.getHttpServer())
+        .post('/videos/upload/initiate')
+        .set('Authorization', `Bearer ${token}`)
+        .send(validUploadBody)
+        .expect(201);
+      return {
+        token,
+        videoId: (res.body as InitiateUploadResponseBody).videoId,
+      };
+    }
+
+    it('redirects to a presigned URL for an anonymous viewer once ready', async () => {
+      const { videoId } = await initiateAsNewUser('video14@example.com');
+      await dataSource
+        .getRepository(Video)
+        .update(videoId, { status: VideoStatus.READY });
+
+      const streamRes = await request(app.getHttpServer())
+        .get(`/videos/${videoId}/stream`)
+        .expect(302);
+      expect(streamRes.headers.location).toContain('http');
+
+      const downloadRes = await request(app.getHttpServer())
+        .get(`/videos/${videoId}/download`)
+        .expect(302);
+      expect(downloadRes.headers.location.toLowerCase()).toContain(
+        'response-content-disposition',
+      );
+    });
+
+    it('returns 409 with VIDEO_NOT_READY for the owner while still processing', async () => {
+      const { token, videoId } = await initiateAsNewUser('video15@example.com');
+
+      const res = await request(app.getHttpServer())
+        .get(`/videos/${videoId}/stream`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(409);
+
+      expect((res.body as ApiErrorResponseBody).error).toBe('VIDEO_NOT_READY');
+    });
+
+    it('returns 404 for a non-owner while the video is still processing', async () => {
+      const { videoId } = await initiateAsNewUser('video16@example.com');
+      const otherToken = await registerConfirmAndLogin('video17@example.com');
+
+      await request(app.getHttpServer())
+        .get(`/videos/${videoId}/download`)
+        .set('Authorization', `Bearer ${otherToken}`)
+        .expect(404);
+    });
+  });
 });

@@ -9,6 +9,7 @@ import { StorageService } from '../storage/storage.service';
 import {
   VideoFileTooLargeException,
   VideoNotFoundException,
+  VideoNotReadyException,
   VideoUploadAlreadyCompletedException,
   VideoUploadNotInProgressException,
 } from '../common/exceptions/domain.exception';
@@ -52,6 +53,23 @@ export class VideosService {
       relations: ['channel'],
     });
     if (!video || video.channel.user_id !== userId) {
+      throw new VideoNotFoundException();
+    }
+    return video;
+  }
+
+  private async findVisibleVideoOrThrow(
+    id: string,
+    viewerUserId: string | undefined,
+  ): Promise<Video> {
+    const video = await this.videoRepository.findOne({
+      where: { id },
+      relations: ['channel'],
+    });
+
+    const isOwner =
+      viewerUserId !== undefined && video?.channel.user_id === viewerUserId;
+    if (!video || (video.status !== VideoStatus.READY && !isOwner)) {
       throw new VideoNotFoundException();
     }
     return video;
@@ -142,16 +160,7 @@ export class VideosService {
     id: string,
     viewerUserId: string | undefined,
   ): Promise<VideoResponseDto> {
-    const video = await this.videoRepository.findOne({
-      where: { id },
-      relations: ['channel'],
-    });
-
-    const isOwner =
-      viewerUserId !== undefined && video?.channel.user_id === viewerUserId;
-    if (!video || (video.status !== VideoStatus.READY && !isOwner)) {
-      throw new VideoNotFoundException();
-    }
+    const video = await this.findVisibleVideoOrThrow(id, viewerUserId);
 
     return {
       id: video.id,
@@ -165,5 +174,30 @@ export class VideosService {
       bitrateKbps: video.bitrate_kbps,
       createdAt: video.created_at,
     };
+  }
+
+  async getStreamUrl(
+    id: string,
+    viewerUserId: string | undefined,
+  ): Promise<string> {
+    const video = await this.findVisibleVideoOrThrow(id, viewerUserId);
+    if (video.status !== VideoStatus.READY) {
+      throw new VideoNotReadyException();
+    }
+    return this.storageService.getDownloadUrl(video.original_file_key);
+  }
+
+  async getDownloadUrl(
+    id: string,
+    viewerUserId: string | undefined,
+  ): Promise<string> {
+    const video = await this.findVisibleVideoOrThrow(id, viewerUserId);
+    if (video.status !== VideoStatus.READY) {
+      throw new VideoNotReadyException();
+    }
+    return this.storageService.getDownloadUrl(video.original_file_key, {
+      attachment: true,
+      filename: video.original_file_name,
+    });
   }
 }

@@ -7,6 +7,7 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Redirect,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -153,5 +154,63 @@ export class VideosController {
     @Param('id') videoId: string,
   ): Promise<VideoResponseDto> {
     return this.videosService.findForViewer(videoId, user?.sub);
+  }
+
+  @Get(':id/stream')
+  @Public()
+  @UseGuards(OptionalJwtAuthGuard)
+  @Redirect()
+  @ApiOperation({
+    summary: 'Stream a video',
+    description:
+      'Redirects to a short-lived presigned URL for inline playback. Requires the video to be ready — 409 otherwise, even for the owner.',
+  })
+  @ApiResponse({ status: 302, description: 'Redirect to the video stream' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Video not found, or not ready and the viewer is not the owner',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Video is not ready for playback yet',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async stream(
+    @CurrentUser() user: JwtPayload | undefined,
+    @Param('id') videoId: string,
+  ): Promise<{ url: string; statusCode: number }> {
+    const url = await this.videosService.getStreamUrl(videoId, user?.sub);
+    return { url, statusCode: HttpStatus.FOUND };
+  }
+
+  @Get(':id/download')
+  @Public()
+  @UseGuards(OptionalJwtAuthGuard)
+  @Redirect()
+  @ApiOperation({
+    summary: 'Download a video',
+    description:
+      'Redirects to a short-lived presigned URL that forces a file download. Requires the video to be ready — 409 otherwise, even for the owner.',
+  })
+  @ApiResponse({ status: 302, description: 'Redirect to the video download' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Video not found, or not ready and the viewer is not the owner',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Video is not ready for download yet',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async download(
+    @CurrentUser() user: JwtPayload | undefined,
+    @Param('id') videoId: string,
+  ): Promise<{ url: string; statusCode: number }> {
+    const url = await this.videosService.getDownloadUrl(videoId, user?.sub);
+    return { url, statusCode: HttpStatus.FOUND };
   }
 }
