@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 5/9 completed
+**SIs:** 6/9 completed
 
 ### SI-03.1 — Object Storage Module (MinIO)
 - **Status:** completed
@@ -34,9 +34,12 @@
   - `npm run test:e2e` sem `--runInBand` roda os arquivos `*.e2e-spec.ts` em paralelo (workers distintos), causando corrida real no banco compartilhado (FK violations, "no channel"). Sempre invocar com `-- --runInBand`, conforme já indicado no `CLAUDE.md` do nestjs-project.
 
 ### SI-03.6 — Worker Bootstrap & FFmpeg Service
-- **Status:** pending
-- **Tests:** —
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 1 module compile + 3 ffmpeg integration passing
+- **Observations:**
+  - `WorkerModule` precisa registrar `Video`, `Channel` E `User` em `TypeOrmModule.forFeature` — o grafo de relações (`Video.channel` → `Channel.user`) só resolve se todas as entidades da cadeia estiverem registradas em algum `forFeature` importado pelo módulo; faltando uma, o TypeORM falha ao montar os metadados com "Entity metadata for X was not found".
+  - Testes que dependem do binário `ffmpeg` real (este arquivo e o do worker consumer na próxima SI) rodam via `docker compose exec worker ...`, não `nestjs-api` (que não tem FFmpeg instalado, por design — videos/TD-04). O restante da suíte roda em `nestjs-api` como antes.
+  - Container `worker` roda o processo continuamente (`command: npm run start:worker`), ao contrário de `nestjs-api` que fica ocioso por padrão — o worker é um serviço de background que precisa estar de fato ativo para a fila ser consumida.
 
 ### SI-03.7 — Video Processing Consumer
 - **Status:** pending
