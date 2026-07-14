@@ -9,7 +9,11 @@ import { VIDEO_PROCESSING_QUEUE } from './queue.constants';
     BullModule.forRootAsync({
       inject: [queueConfig.KEY],
       useFactory: (config: ConfigType<typeof queueConfig>) => ({
-        connection: { host: config.host, port: config.port },
+        connection: {
+          host: config.host,
+          port: config.port,
+          maxRetriesPerRequest: null,
+        },
       }),
     }),
     BullModule.registerQueue({ name: VIDEO_PROCESSING_QUEUE }),

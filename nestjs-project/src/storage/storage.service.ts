@@ -8,6 +8,7 @@ import {
   GetObjectCommand,
   HeadBucketCommand,
   CreateBucketCommand,
+  PutObjectCommand,
   S3Client,
   UploadPartCommand,
 } from '@aws-sdk/client-s3';
@@ -51,6 +52,11 @@ export class StorageService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     await this.ensureBucketExists();
+  }
+
+  /** Closes the underlying HTTP connection pool (for manually-constructed instances outside Nest DI). */
+  destroy(): void {
+    this.client.destroy();
   }
 
   async ensureBucketExists(): Promise<void> {
@@ -115,6 +121,21 @@ export class StorageService implements OnModuleInit {
         Bucket: this.bucket,
         Key: key,
         UploadId: uploadId,
+      }),
+    );
+  }
+
+  async putObject(
+    key: string,
+    body: Buffer,
+    contentType?: string,
+  ): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ...(contentType && { ContentType: contentType }),
       }),
     );
   }

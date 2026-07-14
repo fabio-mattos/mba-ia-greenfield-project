@@ -58,6 +58,19 @@ describe('StorageService (integration)', () => {
     expect(downloaded).toBe(content);
   }, 30000);
 
+  it('uploads a small object directly via putObject and reads it back', async () => {
+    const key = `videos/test-put-${Date.now()}/thumbnail.jpg`;
+    const content = Buffer.from('fake-thumbnail-bytes');
+
+    await storageService.putObject(key, content, 'image/jpeg');
+
+    const stream = await storageService.getObjectStream(key);
+    const downloaded = await streamToString(
+      stream as unknown as NodeJS.ReadableStream,
+    );
+    expect(downloaded).toBe(content.toString());
+  }, 15000);
+
   it('aborts a multipart upload', async () => {
     const key = `videos/test-abort-${Date.now()}/original.txt`;
     const uploadId = await storageService.createMultipartUpload(key);

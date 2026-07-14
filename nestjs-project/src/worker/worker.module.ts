@@ -12,6 +12,7 @@ import { StorageModule } from '../storage/storage.module';
 import { User } from '../users/entities/user.entity';
 import { Video } from '../videos/entities/video.entity';
 import { FfmpegService } from './ffmpeg.service';
+import { VideoProcessingConsumer } from './video-processing.consumer';
 
 @Module({
   imports: [
@@ -39,6 +40,6 @@ import { FfmpegService } from './ffmpeg.service';
     StorageModule,
     QueueModule,
   ],
-  providers: [FfmpegService],
+  providers: [FfmpegService, VideoProcessingConsumer],
 })
 export class WorkerModule {}
