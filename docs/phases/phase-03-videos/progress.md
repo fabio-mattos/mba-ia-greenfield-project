@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 7/9 completed
+**SIs:** 8/9 completed
 
 ### SI-03.1 — Object Storage Module (MinIO)
 - **Status:** completed
@@ -50,8 +50,8 @@
   - O worker real (container sempre ativo) processa de fato os jobs enfileirados pelos testes de `VideosService`/e2e (que sobem arquivos fake de poucos bytes) — isso gera falhas esperadas de FFmpeg nos logs do worker em background, sem afetar as asserções dos testes (que não esperam o processamento terminar).
 
 ### SI-03.8 — Video Detail Endpoint & Access Control
-- **Status:** pending
-- **Tests:** —
+- **Status:** completed
+- **Tests:** 6 unit + 3 integration + 5 e2e passing
 - **Observations:** none
 
 ### SI-03.9 — Streaming & Download Endpoints
