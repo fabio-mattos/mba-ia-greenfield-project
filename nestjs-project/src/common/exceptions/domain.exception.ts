@@ -48,3 +48,45 @@ export class TokenReuseDetectedException extends DomainException {
     );
   }
 }
+
+export class VideoFileTooLargeException extends DomainException {
+  constructor() {
+    super('VIDEO_FILE_TOO_LARGE', 400, 'The file exceeds the 10GB limit');
+  }
+}
+
+export class VideoNotFoundException extends DomainException {
+  constructor() {
+    super('VIDEO_NOT_FOUND', 404, 'Video not found');
+  }
+}
+
+export class VideoUploadNotInProgressException extends DomainException {
+  constructor() {
+    super(
+      'VIDEO_UPLOAD_NOT_IN_PROGRESS',
+      409,
+      'Upload is not in progress for this video',
+    );
+  }
+}
+
+export class VideoUploadAlreadyCompletedException extends DomainException {
+  constructor() {
+    super(
+      'VIDEO_UPLOAD_ALREADY_COMPLETED',
+      409,
+      'Upload has already been completed',
+    );
+  }
+}
+
+export class VideoNotReadyException extends DomainException {
+  constructor() {
+    super(
+      'VIDEO_NOT_READY',
+      409,
+      'Video is not ready for playback/download yet',
+    );
+  }
+}

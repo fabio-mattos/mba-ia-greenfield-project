@@ -21,4 +21,13 @@ export const envValidationSchema = Joi.object({
   MAIL_PORT: Joi.number().default(1025),
   MAIL_FROM: Joi.string().default('"StreamTube" <noreply@streamtube.com>'),
   SWAGGER_ENABLED: Joi.string().valid('true', 'false').default('false'),
+  STORAGE_HOST: Joi.string().default('minio'),
+  STORAGE_PORT: Joi.number().default(9000),
+  STORAGE_USE_SSL: Joi.string().valid('true', 'false').default('false'),
+  STORAGE_ACCESS_KEY_ID: Joi.string().required(),
+  STORAGE_SECRET_ACCESS_KEY: Joi.string().required(),
+  STORAGE_BUCKET: Joi.string().default('streamtube'),
+  STORAGE_REGION: Joi.string().default('us-east-1'),
+  QUEUE_REDIS_HOST: Joi.string().default('redis'),
+  QUEUE_REDIS_PORT: Joi.number().default(6379),
 });

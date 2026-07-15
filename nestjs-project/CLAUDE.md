@@ -33,7 +33,11 @@ docker compose exec nestjs-api npm run start:dev
 
 Services:
 - `nestjs-api` — NestJS API, port `3000`
-- `db` — PostgreSQL 17, port `5432`, database `streamtube`, user/password `streamtube`
+- `db` — PostgreSQL 17, port `5433:5432`, database `streamtube`, user/password `streamtube`
+- `minio` — S3-compatible object storage (video files + thumbnails), ports `9000` (API) / `9001` (console)
+- `redis` — BullMQ queue backend, port `6379`
+- `worker` — video processing worker (FFmpeg metadata extraction + thumbnail generation), always running via `command: npm run start:worker` (unlike `nestjs-api`, which is idle until you run a command inside it)
+- `mailpit` — SMTP test server, port `1025` (SMTP) / `8025` (web UI)
 
 All verification and teardown commands run on the **host machine**:
 
@@ -95,6 +99,18 @@ Parallel execution causes FK violations, deadlocks, and cross-suite contaminatio
 
 During active development, run only the tests related to the file being changed (`npm test -- path/to/file.spec.ts`). Before declaring a task done, run the full suite — see the global `CLAUDE.md` → "Definition of Done (Technical)".
 
+### Two-container test split (FFmpeg)
+
+`nestjs-api`'s image deliberately does **not** have FFmpeg installed — only the `worker` image does (architectural separation: the API never touches video bytes or spawns FFmpeg). This means:
+
+- Tests that spawn `ffmpeg`/`ffprobe` (`src/worker/ffmpeg.service.integration-spec.ts`, `src/worker/video-processing.consumer.integration-spec.ts`) **must** run inside the `worker` container:
+  ```bash
+  docker compose exec worker npx jest --runInBand src/worker
+  ```
+  Running them via `nestjs-api` fails with `spawn ffmpeg ENOENT` — that failure is expected there and is not a bug.
+- Every other suite (including the rest of `src/worker`, e.g. `worker.module.spec.ts`, `video-processing.consumer.spec.ts`) runs via `nestjs-api` as usual.
+- A "full suite green" claim requires **both** commands to pass — neither container alone runs 100% of the tests.
+
 ## Long-running Processes
 
 Commands that never exit (dev server, watch modes) must be run in background in the Bash tool — otherwise the agent blocks indefinitely waiting for the process to return.
@@ -148,6 +164,14 @@ NestJS with standard module structure. Source lives in `src/`, compiled output i
 
 - Each domain feature gets its own module (e.g., `UsersModule`, `VideosModule`) registered in `AppModule`
 - Controllers handle HTTP routing; Services hold business logic; both are scoped to their module
+
+### Videos: Upload, Storage, Queue & Worker
+
+- `StorageModule`/`StorageService` (`src/storage/`) wraps the S3-compatible client (MinIO) — presigned multipart upload (`createMultipartUpload`/`getUploadPartUrl`/`completeMultipartUpload`) so video bytes go **directly from the client to storage, never through the API**, plus presigned `GetObject` URLs for streaming/download (`getDownloadUrl`).
+- `QueueModule` (`src/queue/`) registers the `video-processing` BullMQ queue over Redis (`maxRetriesPerRequest: null` is required on the connection because it's shared with `Worker` consumer instances, not just producers).
+- `VideosModule`/`VideosService`/`VideosController` (`src/videos/`) own the `Video` entity and its lifecycle: `initiateUpload` → `getUploadPartUrl` (×N) → `completeUpload` (flips status to `processing` and enqueues the job) → `GET /videos/:id`, `GET /videos/:id/stream`, `GET /videos/:id/download` for reading it back.
+- The **worker** is a separate NestJS application context (`src/worker/main.ts`, bootstrapped via `NestFactory.createApplicationContext`), running in its own `worker` Compose service/image — it's the only image with FFmpeg installed. `VideoProcessingConsumer` (`src/worker/video-processing.consumer.ts`) consumes the `video-processing` queue, uses `FfmpegService` to extract metadata (ffprobe) and generate a thumbnail, then updates the video to `ready` — or, after BullMQ exhausts its configured retries (3 attempts, exponential backoff), to `failed`.
+- Video status lifecycle: `draft → processing → ready | failed`. Visibility rule: the owning channel can see a video in any status; every other viewer (including anonymous) only once it's `ready`. `GET /videos/:id/stream` and `/download` additionally require `ready` even for the owner.
 
 ## Code Conventions
 
