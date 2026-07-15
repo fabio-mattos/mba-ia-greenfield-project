@@ -1,4 +1,9 @@
+import type { ValidationResult } from 'joi';
 import { envValidationSchema } from './env.validation';
+
+interface ValidatedEnv {
+  SWAGGER_ENABLED: string;
+}
 
 const requiredEnv = {
   DB_USERNAME: 'user',
@@ -10,11 +15,13 @@ const requiredEnv = {
   STORAGE_SECRET_ACCESS_KEY: 'storage-pass',
 };
 
-const validate = (env: Record<string, string>) =>
+const validate = (
+  env: Record<string, string>,
+): ValidationResult<ValidatedEnv> =>
   envValidationSchema.validate(
     { ...requiredEnv, ...env },
     { allowUnknown: true, abortEarly: false },
-  );
+  ) as ValidationResult<ValidatedEnv>;
 
 describe('envValidationSchema — SWAGGER_ENABLED', () => {
   it('should reject SWAGGER_ENABLED with an invalid value', () => {
@@ -34,8 +41,9 @@ describe('envValidationSchema — SWAGGER_ENABLED', () => {
   });
 
   it('should apply default false when SWAGGER_ENABLED is not set', () => {
-    const { value, error } = validate({});
-    expect(error).toBeUndefined();
+    const result = validate({});
+    expect(result.error).toBeUndefined();
+    const value = result.value as ValidatedEnv;
     expect(value.SWAGGER_ENABLED).toBe('false');
   });
 });
