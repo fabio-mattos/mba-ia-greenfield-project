@@ -439,15 +439,15 @@ SI-03.3 (no deps)
 
 ## Deliverables
 
-- [ ] Upload de vídeo de até 10GB via multipart presigned funcional, sem qualquer parte do arquivo passando pela API
-- [ ] Pré-cadastro automático do vídeo como `draft` ao iniciar o upload
-- [ ] Processamento automático (metadados + thumbnail) após o upload completo, via fila real
-- [ ] URL única por vídeo (UUID da entidade), sem conflito
-- [ ] Streaming (redirect + 206 via MinIO) e download funcionando
-- [ ] Ciclo de status refletido no banco (`draft` → `processing` → `ready`/`failed`), com retry automático e falha terminal após esgotar tentativas
-- [ ] MinIO, Redis e o worker de vídeo sobem via `docker compose up -d` junto com API, banco e Mailpit
-- [ ] Migração cria a tabela `videos` com FK para `channels`
-- [ ] All SI tests pass in nestjs-project (`docker compose exec nestjs-api npm test -- --runInBand`)
-- [ ] E2E tests pass (`docker compose exec nestjs-api npm run test:e2e`)
-- [ ] Type-check passes (`docker compose exec nestjs-api npx tsc --noEmit`)
-- [ ] Lint passes (`docker compose exec nestjs-api npm run lint`)
+- [x] Upload de vídeo de até 10GB via multipart presigned funcional, sem qualquer parte do arquivo passando pela API
+- [x] Pré-cadastro automático do vídeo como `draft` ao iniciar o upload
+- [x] Processamento automático (metadados + thumbnail) após o upload completo, via fila real
+- [x] URL única por vídeo (UUID da entidade), sem conflito
+- [x] Streaming (redirect + presigned URL via MinIO) e download funcionando
+- [x] Ciclo de status refletido no banco (`draft` → `processing` → `ready`/`failed`), com retry automático e falha terminal após esgotar tentativas
+- [x] MinIO, Redis e o worker de vídeo sobem via `docker compose up -d` junto com API, banco e Mailpit
+- [x] Migração cria a tabela `videos` com FK para `channels`
+- [x] All SI tests pass in nestjs-project (`docker compose exec nestjs-api npm test -- --runInBand`, mais `docker compose exec worker npx jest --runInBand src/worker` para os testes de FFmpeg)
+- [x] E2E tests pass (`docker compose exec nestjs-api npm run test:e2e -- --runInBand`)
+- [x] Type-check passes (`docker compose exec nestjs-api npx tsc --noEmit`)
+- [x] Lint passes (`docker compose exec nestjs-api npm run lint`)

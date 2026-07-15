@@ -1,6 +1,6 @@
 # phase-03-videos — Progress
 
-**Status:** in_progress
+**Status:** completed
 **SIs:** 9/9 completed
 
 ### SI-03.1 — Object Storage Module (MinIO)
@@ -60,3 +60,11 @@
 - **Observations:**
   - `findForViewer`, `getStreamUrl` e `getDownloadUrl` compartilham o mesmo helper privado `findVisibleVideoOrThrow` (regra de visibilidade: dono vê em qualquer status, demais só quando `ready`); `getStreamUrl`/`getDownloadUrl` acrescentam a exigência de `status === 'ready'` para todos, inclusive o dono, lançando `VideoNotReadyException` (409) caso contrário.
   - Endpoints usam o decorator `@Redirect()` do Nest (handler retorna `{ url, statusCode: 302 }`) em vez de `@Res()` bruto do Express — mantém o controller alinhado ao padrão declarativo do restante do projeto.
+
+### Definition of Done (pós SI-03.9)
+- **Status:** completed
+- **Observations:**
+  - `npx tsc --noEmit`: limpo.
+  - `npm run lint`: limpo (0 erros). Corrigida também a dívida de lint pré-existente das Fases 01/02 (~190 problemas, 150 erros) em arquivos não tocados originalmente pela Fase 03 (auth, channels, mail, config, test helpers) — decisão tomada com o usuário para deixar `npm run lint` 100% verde no projeto todo, não só nos arquivos da Fase 03.
+  - Suíte completa: 32 suites/196 testes em `nestjs-api` + 4 suites/9 testes em `worker` (FFmpeg) + 68 testes e2e (`--runInBand`) — todos passando.
+  - `CLAUDE.md` (raiz e `nestjs-project/`) atualizado com a infraestrutura nova (MinIO, Redis, worker) e a convenção de dois containers para testes de FFmpeg.
